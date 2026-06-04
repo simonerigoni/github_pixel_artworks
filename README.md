@@ -58,23 +58,23 @@ uv run github-pixel-artworks --help
 
 Key options:
 - `-i, --input` (required): path to a 7-line artwork file, e.g. `data/simple.txt`
-- `--year 2025`: target calendar year (recommended - starts on first Sunday of the year)
+- `--year 2020`: target calendar year (recommended - starts on first Sunday of the year)
 - `--art-branch artworks`: use (and auto-create/switch to) a dedicated branch for the art commits. Recommended when using this repo itself for contributions (handles stashing of your source changes).
 - `--in-place`: commit directly onto the current branch (use with caution or on a dedicated branch).
 - `--dry-run`: preview the dates and commit count without making changes.
 - `--username yourname`: auto-scale intensity based on your current GitHub contribution max.
 - `--force`: skip the dirty-repo check.
 
-Example (dry-run preview for 2025):
+Example (dry-run preview for 2020):
 
 ```bash
-uv run github-pixel-artworks -i data/simple.txt --year 2025 --dry-run
+uv run github-pixel-artworks -i data/simple.txt --year 2020 --dry-run
 ```
 
 Example (generate on dedicated branch for this repo):
 
 ```bash
-uv run github-pixel-artworks -i data/heart.txt --year 2025 --art-branch artworks --yes
+uv run github-pixel-artworks -i data/heart.txt --year 2020 --art-branch artworks --yes
 git push origin artworks
 ```
 
