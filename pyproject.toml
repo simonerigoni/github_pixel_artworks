@@ -1,0 +1,38 @@
+[project]
+name = "github-pixel-artworks"
+version = "0.1.0"
+description = "Create pixel artworks in your GitHub contributions chart."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["GitPython>=3.1.0"]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.408",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.14.6",
+]
+
+[project.scripts]
+github-pixel-artworks = "github_pixel_artworks.cli:cli"
+github-pixel-artworks-gui = "github_pixel_artworks.gui:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-v --durations=0"
+
+[tool.coverage.run]
+source = ["src"]
