@@ -6,9 +6,10 @@ I want to build a script that can create pixel artworks in my GitHub contributio
 
 ## Software and libraries
 
-This project uses Python 3.11 and the most important packages are:
+This project uses Python 3.12 and the most important packages are:
 
-- TODO
+- **GitPython** (runtime): for git repository operations and creating backdated commits
+- **tkinter** (stdlib): used by the GUI for the interactive pixel editor
 
 ## Data
 
@@ -47,11 +48,80 @@ It is also possible to run manully the individual tests:
 
 ## Running the code
 
-TODO
+After setting up the environment with `.\my_scripts\Set-Up.ps1` (or manually with `uv sync` and `pre-commit install`):
+
+### CLI
+
+```bash
+uv run github-pixel-artworks --help
+```
+
+Key options:
+- `-i, --input` (required): path to a 7-line artwork file, e.g. `data/simple.txt`
+- `--year 2025`: target calendar year (recommended - starts on first Sunday of the year)
+- `--art-branch artworks`: use (and auto-create/switch to) a dedicated branch for the art commits. Recommended when using this repo itself for contributions (handles stashing of your source changes).
+- `--in-place`: commit directly onto the current branch (use with caution or on a dedicated branch).
+- `--dry-run`: preview the dates and commit count without making changes.
+- `--username yourname`: auto-scale intensity based on your current GitHub contribution max.
+- `--force`: skip the dirty-repo check.
+
+Example (dry-run preview for 2025):
+
+```bash
+uv run github-pixel-artworks -i data/simple.txt --year 2025 --dry-run
+```
+
+Example (generate on dedicated branch for this repo):
+
+```bash
+uv run github-pixel-artworks -i data/heart.txt --year 2025 --art-branch artworks --yes
+git push origin artworks
+```
+
+After pushing, the pattern will appear in your GitHub contribution graph for the chosen weeks in that year.
+
+### GUI
+
+For an interactive drawing experience (recommended for creating new art):
+
+```bash
+uv run github-pixel-artworks-gui
+```
+
+The GUI lets you:
+- Click to draw on a 7-row grid (toggle cells on/off)
+- Add or remove week columns
+- Choose the target year (and optional offset weeks)
+- Load/save grids directly to the `data/` folder
+- Preview the resulting dates and commit count
+- "Generate Art" button: creates the backdated commits (with optional dedicated branch + auto-stash)
+- "Push to GitHub" button: pushes the current branch
+
+The GUI is built with Python's tkinter and is fully cross-platform (though this repo's setup scripts target Windows).
 
 ## Results
 
-TODO
+The core of the tool lives in `src/github_pixel_artworks/core.py` (especially `apply_drawing`).
+
+When you run the CLI or GUI with a grid + year:
+
+- The 7-row grid is interpreted as weeks (columns) × days (rows, Sunday at top).
+- Dates are calculated starting from the first Sunday of the target year (plus any `--offset-weeks`).
+- For each "on" pixel, one or more empty commits are created with the corresponding `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE`.
+- Higher intensity values (2, 3, 4+) create multiple commits on that day to produce darker green squares.
+
+These commits are "empty" (no file changes) so they don't pollute the working tree history beyond the dates.
+
+When pushed to GitHub:
+- They contribute to your public (or private, if enabled) contribution graph.
+- The visual pattern from your grid will appear in the chosen year/position.
+- Using `--art-branch artworks` (or the GUI equivalent) keeps your normal source commits (with real dates) on `main` while the artistic backdated commits live on a separate branch.
+
+You can see example output by looking at the contribution graph on the project owner's GitHub profile (after pushing art branches).
+
+The `data/` folder contains ready-to-use example patterns. The GUI is the easiest way to design new ones.
+
+**Note**: GitHub only shows contributions from the last ~12 months by default on profiles, but year-specific views and the full history are still recorded. Backdating works for any past dates (within reason).
 
 ## List of activities
 
