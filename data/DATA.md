@@ -41,8 +41,10 @@ The GUI saves and loads directly to/from this folder.
 ### How dates are calculated
 
 - `--year 2025` starts the leftmost column on the first Sunday of 2025.
-- `--offset-weeks N` shifts the entire pattern N weeks to the right.
+- `--offset-weeks N` (N = 0..52) shifts the entire pattern N weeks to the right.
 - `--auto-align` uses ~1 year ago (rolling view).
+
+Artworks are limited to at most 52 weeks (columns) wide.
 
 See the code in `src/github_pixel_artworks/core.py` (functions like `get_first_sunday_of_year`, `apply_drawing`).
 

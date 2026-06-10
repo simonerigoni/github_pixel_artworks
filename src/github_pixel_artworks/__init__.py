@@ -13,6 +13,7 @@ except Exception:
 
 # Re-export the main public API from core
 from .core import (
+    MAX_WEEKS,
     load_grid,
     save_grid,
     grid_to_text,
@@ -26,6 +27,7 @@ from .core import (
 
 __all__ = [
     "__version__",
+    "MAX_WEEKS",
     "load_grid",
     "save_grid",
     "grid_to_text",

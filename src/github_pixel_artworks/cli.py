@@ -13,6 +13,7 @@ from typing import Optional
 
 from . import __version__
 from .core import (
+    MAX_WEEKS,
     apply_drawing,
     get_auto_start_date,
     get_first_sunday_of_year,
@@ -130,7 +131,8 @@ def cli() -> None:
         "--offset-weeks",
         type=int,
         default=0,
-        help="Shift the art this many weeks to the right. Works with --year (weeks after first Sunday of the year) or --auto-align.",
+        help=f"Shift the art this many weeks to the right (0..{MAX_WEEKS}). "
+        "Works with --year (weeks after first Sunday of the year) or --auto-align.",
     )
     parser.add_argument(
         "--year",
@@ -200,6 +202,13 @@ def cli() -> None:
     except Exception as e:
         print(f"ERROR loading artwork: {e}", file=sys.stderr)
         sys.exit(4)
+
+    if args.offset_weeks > MAX_WEEKS:
+        print(
+            f"ERROR: --offset-weeks must not exceed {MAX_WEEKS}.",
+            file=sys.stderr,
+        )
+        sys.exit(5)
 
     if args.start_date:
         try:

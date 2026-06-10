@@ -18,6 +18,13 @@ from git.exc import GitCommandError, InvalidGitRepositoryError
 
 
 # ---------------------------------------------------------------------------
+# Limits (GitHub contribution graphs show ~52 weeks per year view)
+# ---------------------------------------------------------------------------
+
+MAX_WEEKS: int = 52
+
+
+# ---------------------------------------------------------------------------
 # Grid loading / saving (supports the legacy temp/ example format + modern digits)
 # ---------------------------------------------------------------------------
 
@@ -28,6 +35,7 @@ def load_grid(path: Path | str) -> list[list[int]]:
 
     Each line = one row (top row = Sunday for week 0).
     Each character position in the line = one week column.
+    Width (number of weeks/columns) must be 1..MAX_WEEKS (52).
 
     Supported chars (case-insensitive where sensible):
         empty: ' ', '.', 'x', 'X', '0'
@@ -62,6 +70,10 @@ def load_grid(path: Path | str) -> list[list[int]]:
     width = len(rows[0]) if rows else 0
     if width == 0:
         raise ValueError("Artwork has zero width.")
+    if width > MAX_WEEKS:
+        raise ValueError(
+            f"Artwork must have at most {MAX_WEEKS} weeks (columns). Got {width} in {path}"
+        )
 
     grid: list[list[int]] = []
     for r, row in enumerate(rows):
@@ -227,7 +239,10 @@ def apply_drawing(
     """Non-interactive core that creates the backdated commits for a drawing.
 
     - If year is given, start_date is computed as first Sunday of the year + offset_weeks.
-    - Otherwise start_date must be provided.
+      offset_weeks is limited to 0..MAX_WEEKS (negative values are tolerated for
+      CLI flexibility when targeting the prior year).
+    - Otherwise start_date must be provided (offset_weeks is ignored in that path
+      but still validated for sanity).
     - in_place=True (the mode used for *this* dedicated art repo) adds commits directly
       on the current branch using --allow-empty.
     - If art_branch is provided (e.g. "artworks"), the function will:
@@ -236,6 +251,7 @@ def apply_drawing(
         * perform the art commits on that branch
         * after, pop the stash (your source changes come back)
       This is the recommended way to keep clean history separation.
+    - offset_weeks: limited to <= MAX_WEEKS (52). See validation in the function body.
     - log() receives all progress / messages.
     - Returns the number of commits created.
     - Raises on fatal errors (dirty repo without force, bad repo, etc.).
@@ -244,6 +260,9 @@ def apply_drawing(
     if width == 0:
         log("Nothing to do (empty grid).")
         return 0
+
+    if offset_weeks > MAX_WEEKS:
+        raise ValueError(f"offset_weeks must not exceed {MAX_WEEKS} (got {offset_weeks}).")
 
     # Resolve start date
     if start_date is None:
