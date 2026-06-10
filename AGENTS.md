@@ -10,9 +10,9 @@ It includes:
 - A CLI (`github-pixel-artworks`)
 - An interactive Tkinter GUI (`github-pixel-artworks-gui`) for visually editing 7-row grids
 - Support for selecting a target year (auto-calculates the first Sunday) and optional week offset
-- Dedicated branch support (`--art-branch artworks`) with automatic stashing/checkout for clean separation between source code and art commits
+- Dedicated branch support (`--art-branch artworks-2025` etc.) with automatic stashing/checkout for clean separation between source code and art commits. Preferred naming is `artworks-<target-year>`.
 
-The owner primarily uses **this repository itself** as the canvas for the artwork (in-place commits on a dedicated `artworks` branch).
+The owner primarily uses **this repository itself** as the canvas for the artwork (in-place commits on dedicated `artworks-<year>` branches, e.g. `artworks-2025`).
 
 ## Directory Structure
 
@@ -101,7 +101,7 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
 ## Important Behavioral Rules for This Project
 
 - The core function is `apply_drawing(...)` in `core.py`. Both CLI and GUI ultimately call it.
-- When the user is drawing art in **this repo**, prefer the dedicated branch flow (`art_branch="artworks"`) + `in_place=True`. This keeps source code history (with real dates) separate from the backdated art commits.
+- When the user is drawing art in **this repo**, prefer the dedicated branch flow (`art_branch="artworks-2025"` or similar year-specific name) + `in_place=True`. This keeps source code history (with real dates) separate from the backdated art commits. Use the year the art targets in the branch name.
 - The `data/` folder contains the canonical example grids. The GUI saves/loads from there by default. Keep the 7-line format.
 - `data/` files are **not** currently packaged inside the wheel (they are user/developer data).
 - The project has a strong Windows bias (PowerShell setup scripts, `.venv\Scripts\...` paths in pre-commit). Be careful with path separators in scripts/config.

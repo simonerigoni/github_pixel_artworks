@@ -39,6 +39,7 @@ def perform_pixel_art(
     """CLI-facing wrapper. Keeps the classic interactive banners + yes prompts,
     but delegates the actual repo/commit work to the reusable apply_drawing().
     art_branch is passed through for dedicated branch support.
+    The recommended convention is to use year-specific names (artworks-YYYY).
     """
     width = len(grid[0]) if grid else 0
     if width == 0:
@@ -100,9 +101,11 @@ def cli() -> None:
         prog="github-pixel-artworks",
         description="Draw pixel art on your GitHub contributions graph using backdated commits.",
         epilog=(
-            "Use --art-branch artworks (or --in-place) when this repository's only purpose is to host pixel artworks. "
+            "Use --art-branch artworks-YYYY (e.g. --art-branch artworks-2025) (or --in-place) "
+            "when this repository's only purpose is to host pixel artworks. "
+            "The recommended convention is a year-specific branch so each year's art is isolated. "
             "--art-branch will auto-manage stashing and branch creation for clean separation.\n"
-            "See the README for details and examples (including the original temp/ artwork)."
+            "See the README for details and examples."
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -173,10 +176,12 @@ def cli() -> None:
         "--dedicated-branch",
         dest="art_branch",
         default=None,
-        help="Create or switch to a dedicated branch for the artwork commits (e.g. 'artworks'). "
-        "Highly recommended for this repo. If the working tree is dirty, changes will be auto-stashed, "
+        help="Create or switch to a dedicated branch for the artwork commits (e.g. 'artworks-2025' or 'artworks-2016'). "
+        "Highly recommended to include the target year in the name. "
+        "If the working tree is dirty, changes will be auto-stashed, "
         "the branch created/switched, art commits created on it, then stash popped. "
-        "This avoids dirty-repo errors and keeps source development history separate from art commits.",
+        "This avoids dirty-repo errors and keeps source development history separate from art commits. "
+        "If you pass the bare name 'artworks' together with --year, it will be automatically turned into 'artworks-<year>'.",
     )
     parser.add_argument(
         "--dry-run",
@@ -228,6 +233,19 @@ def cli() -> None:
         parser.error(
             "You must supply one of: --start-date, --year, or --auto-align (--offset-weeks works with --year and --auto-align)."
         )
+
+    # Auto-apply user's preferred year-specific branch naming convention.
+    # If someone passes the bare "--art-branch artworks" (or similar) together with --year,
+    # turn it into "artworks-YYYY" automatically.
+    if args.art_branch:
+        ab = args.art_branch.strip()
+        if ab.lower() in ("artworks", "art", "dedicated-art"):
+            if args.year is not None:
+                args.art_branch = f"artworks-{args.year}"
+                print(
+                    f"Info: using year-specific art branch '{args.art_branch}' (from --year {args.year})"
+                )
+            # If no explicit year (e.g. only --start-date or --auto-align), leave it as-is or default to "artworks"
 
     if start.weekday() != 6:
         print(
