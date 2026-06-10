@@ -10,7 +10,8 @@ Interactive editor for creating 7-row pixel art grids (for GitHub contribution g
 - Save .txt files to the data/ folder (compatible with the CLI).
 - "Generate Art" button: creates the backdated commits for the selected year (in-place).
   The "Use dedicated art branch" checkbox (on by default) tells the core to auto-manage
-  stashing + checkout -B the branch (default name "artworks") so you avoid dirty-repo errors.
+  stashing + checkout -B the branch. The suggested branch name is "artworks-<year>"
+  (e.g. artworks-2016) so each year's art lives on its own branch.
 - "Push to GitHub" button: pushes the current (art) branch after generation.
 
 Launch:
@@ -71,6 +72,7 @@ class PixelArtGUI:
         self._refresh_canvas()
         self._populate_drawings_list()
         self._update_preview_label()
+        self._update_art_branch_suggestion()
 
         # Poll the log queue periodically
         self.root.after(80, self._poll_log_queue)
@@ -181,10 +183,12 @@ class PixelArtGUI:
             variable=self.use_art_branch_var,
         ).pack(anchor=tk.W)
 
-        self.art_branch_var = tk.StringVar(value="artworks")
+        # Start with a year-specific branch name per user preference (artworks-2016, artworks-2025, ...)
+        year_for_branch = self.year_var.get()
+        self.art_branch_var = tk.StringVar(value=f"artworks-{year_for_branch}")
         branch_frame = ttk.Frame(action_frame)
         ttk.Label(branch_frame, text="Art branch name:").pack(side=tk.LEFT)
-        ttk.Entry(branch_frame, textvariable=self.art_branch_var, width=15).pack(
+        ttk.Entry(branch_frame, textvariable=self.art_branch_var, width=18).pack(
             side=tk.LEFT, padx=4
         )
         branch_frame.pack(fill=tk.X, pady=2)
@@ -300,6 +304,7 @@ class PixelArtGUI:
 
     def _on_params_changed(self):
         self._update_preview_label()
+        self._update_art_branch_suggestion()
 
     def _update_preview_label(self):
         try:
@@ -314,6 +319,20 @@ class PixelArtGUI:
             )
         except Exception:
             self.preview_label.config(text="Invalid year/offset")
+
+    def _update_art_branch_suggestion(self):
+        """Keep the art branch name in sync with the selected year (user preference:
+        use year-specific branches like 'artworks-2016' instead of a single 'artworks').
+        Only auto-updates if the field still looks like a generated suggestion.
+        """
+        try:
+            year = self.year_var.get()
+            suggested = f"artworks-{year}"
+            current = self.art_branch_var.get().strip()
+            if not current or current.startswith("artworks-") or current == "artworks":
+                self.art_branch_var.set(suggested)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Data (drawings) list & load/save

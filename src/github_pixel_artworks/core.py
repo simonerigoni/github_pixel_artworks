@@ -245,7 +245,7 @@ def apply_drawing(
       but still validated for sanity).
     - in_place=True (the mode used for *this* dedicated art repo) adds commits directly
       on the current branch using --allow-empty.
-    - If art_branch is provided (e.g. "artworks"), the function will:
+    - If art_branch is provided (e.g. "artworks-2025" or "artworks-2016"), the function will:
         * If dirty: auto-stash changes
         * checkout -B <art_branch>
         * perform the art commits on that branch

@@ -59,7 +59,7 @@ uv run github-pixel-artworks --help
 Key options:
 - `-i, --input` (required): path to a 7-line artwork file, e.g. `data/simple.txt`
 - `--year 2020`: target calendar year (recommended - starts on first Sunday of the year)
-- `--art-branch artworks`: use (and auto-create/switch to) a dedicated branch for the art commits. Recommended when using this repo itself for contributions (handles stashing of your source changes).
+- `--art-branch artworks-2025`: use (and auto-create/switch to) a dedicated, year-specific branch for the art commits (recommended convention: `artworks-<year>`). Recommended when using this repo itself for contributions (handles stashing of your source changes).
 - `--in-place`: commit directly onto the current branch (use with caution or on a dedicated branch).
 - `--dry-run`: preview the dates and commit count without making changes.
 - `--username yourname`: auto-scale intensity based on your current GitHub contribution max.
@@ -74,8 +74,8 @@ uv run github-pixel-artworks -i data/simple.txt --year 2020 --dry-run
 Example (generate on dedicated branch for this repo):
 
 ```bash
-uv run github-pixel-artworks -i data/heart.txt --year 2020 --art-branch artworks --yes
-git push origin artworks
+uv run github-pixel-artworks -i data/heart.txt --year 2020 --art-branch artworks-2020 --yes
+git push origin artworks-2020
 ```
 
 After pushing, the pattern will appear in your GitHub contribution graph for the chosen weeks in that year.
@@ -115,7 +115,7 @@ These commits are "empty" (no file changes) so they don't pollute the working tr
 When pushed to GitHub:
 - They contribute to your public (or private, if enabled) contribution graph.
 - The visual pattern from your grid will appear in the chosen year/position.
-- Using `--art-branch artworks` (or the GUI equivalent) keeps your normal source commits (with real dates) on `main` while the artistic backdated commits live on a separate branch.
+- Using `--art-branch artworks-2025` (or the GUI equivalent, which suggests year-specific names like `artworks-<year>`) keeps your normal source commits (with real dates) on `main` while the artistic backdated commits live on a separate branch.
 
 You can see example output by looking at the contribution graph on the project owner's GitHub profile (after pushing art branches).
 
