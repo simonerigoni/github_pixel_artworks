@@ -27,6 +27,7 @@ from tkinter.scrolledtext import ScrolledText
 from pathlib import Path
 
 from .core import (
+    MAX_WEEKS,
     apply_drawing,
     load_grid,
     save_grid,
@@ -44,7 +45,7 @@ FILLED_COLOR = "#40c463"  # GitHub-like green for level 1
 GRID_BG = "#f0f0f0"
 
 MIN_COLS = 3
-MAX_COLS = 60
+MAX_COLS = MAX_WEEKS
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +104,7 @@ class PixelArtGUI:
         offset_spin = ttk.Spinbox(
             top,
             from_=0,
-            to=52,
+            to=MAX_WEEKS,
             textvariable=self.offset_var,
             width=4,
             command=self._on_params_changed,
