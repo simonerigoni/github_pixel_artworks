@@ -29,7 +29,6 @@ See the files in this folder:
 - `simple.txt` - a small diamond shape
 - `heart.txt` - heart pattern
 - `legacy.txt` - original example from the inspiration project
-- `levels.txt` - demonstrates different intensity levels
 - `space_invaders.txt` - fun space invader pattern
 
 ### Usage
