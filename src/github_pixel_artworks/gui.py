@@ -426,7 +426,7 @@ class PixelArtGUI:
                     self._queue_log(f"\n=== SUCCESS: {n} commits created for year {year} ===")
                 self.root.after(0, lambda: self.push_btn.config(state=tk.NORMAL))
             except Exception as e:
-                self._queue_log(f"\nERROR: {e}")
+                self._queue_log(f"\nError: {e}")
             finally:
                 self.root.after(0, lambda: self.generate_btn.config(state=tk.NORMAL))
                 self.root.after(0, lambda: self.status_var.set("Ready"))

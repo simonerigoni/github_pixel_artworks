@@ -219,6 +219,67 @@ def preview(grid: list[list[int]], start_date: datetime, multiplier: int) -> str
 
 
 # ---------------------------------------------------------------------------
+# GitHub URL helpers
+# ---------------------------------------------------------------------------
+
+
+def normalize_github_https_url(remote_url: str) -> str | None:
+    """Convert a git remote URL into an https://github.com/owner/repo form if possible."""
+    raw = remote_url.strip()
+    if raw.endswith(".git"):
+        raw = raw[:-4]
+
+    if raw.startswith("git@github.com:"):
+        path = raw.removeprefix("git@github.com:")
+        return f"https://github.com/{path}"
+
+    if raw.startswith("ssh://git@github.com/"):
+        path = raw.removeprefix("ssh://git@github.com/")
+        return f"https://github.com/{path}"
+
+    if raw.startswith("https://github.com/") or raw.startswith("http://github.com/"):
+        # Normalize http -> https and strip trailing slash
+        path = raw.split("github.com/", 1)[1].strip("/")
+        return f"https://github.com/{path}"
+
+    return None
+
+
+def resolve_github_repo_url(
+    repo: git.Repo,
+    username: str | None = None,
+    fallback_repo_name: str = "github_pixel_artworks",
+) -> str | None:
+    """
+    Best-effort GitHub HTTPS URL for the target repository.
+
+    Preference order:
+    1. ``origin`` remote (or the first available remote)
+    2. ``https://github.com/{username}/{fallback_repo_name}`` when username is known
+    """
+    candidates: list[str] = []
+    try:
+        candidates.append(repo.remotes.origin.url)
+    except Exception:
+        pass
+    try:
+        for remote in repo.remotes:
+            if remote.url and remote.url not in candidates:
+                candidates.append(remote.url)
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        normalized = normalize_github_https_url(candidate)
+        if normalized:
+            return normalized
+
+    if username:
+        return f"https://github.com/{username}/{fallback_repo_name}"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Core non-interactive apply logic (used by both CLI and the new GUI)
 # ---------------------------------------------------------------------------
 
@@ -233,6 +294,7 @@ def apply_drawing(
     in_place: bool = True,
     force: bool = False,
     art_branch: str | None = None,
+    username: str | None = None,
     log: Callable[[str], None] = print,
 ) -> int:
     """Non-interactive core that creates the backdated commits for a drawing.
@@ -250,6 +312,8 @@ def apply_drawing(
         * perform the art commits on that branch
         * after, pop the stash (your source changes come back)
       This is the recommended way to keep clean history separation.
+    - username: optional GitHub owner used only as a fallback when writing the orphan-branch
+      README link (prefer the repo remote URL when available).
     - offset_weeks: limited to <= MAX_WEEKS (52). See validation in the function body.
     - log() receives all progress / messages.
     - Returns the number of commits created.
@@ -325,10 +389,12 @@ def apply_drawing(
                 item.unlink(missing_ok=True)
 
         readme = root / "README.md"
+        repo_url = resolve_github_repo_url(repo, username=username)
+        repo_line = f"Repo: {repo_url}\n" if repo_url else ""
         readme.write_text(
             f"# GitHub Pixel Art\n\n"
             f"Generated on {datetime.now().isoformat()} using github-pixel-artworks\n"
-            f"Repo: https://github.com/simonerigoni/github_pixel_artworks\n\n"
+            f"{repo_line}"
             f"Branch: {branch_name}\n",
             encoding="utf-8",
         )

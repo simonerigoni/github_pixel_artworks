@@ -34,11 +34,13 @@ def perform_pixel_art(
     force: bool = False,
     in_place: bool = False,
     art_branch: str | None = None,
+    username: str | None = None,
 ) -> None:
     """CLI-facing wrapper. Keeps the classic interactive banners + yes prompts,
     but delegates the actual repo/commit work to the reusable apply_drawing().
     art_branch is passed through for dedicated branch support.
     The recommended convention is to use year-specific names (artworks-YYYY).
+    username is only used as a fallback owner when generating an orphan-branch README.
     """
     width = len(grid[0]) if grid else 0
     if width == 0:
@@ -88,10 +90,11 @@ def perform_pixel_art(
             in_place=in_place,
             force=force,
             art_branch=art_branch,
+            username=username,
             log=print,
         )
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(2)
 
 
@@ -204,12 +207,12 @@ def cli() -> None:
     try:
         grid = load_grid(args.input)
     except Exception as e:
-        print(f"ERROR loading artwork: {e}", file=sys.stderr)
+        print(f"Error loading artwork: {e}", file=sys.stderr)
         sys.exit(4)
 
     if args.offset_weeks > MAX_WEEKS:
         print(
-            f"ERROR: --offset-weeks must not exceed {MAX_WEEKS}.",
+            f"Error: --offset-weeks must not exceed {MAX_WEEKS}.",
             file=sys.stderr,
         )
         sys.exit(5)
@@ -218,11 +221,11 @@ def cli() -> None:
         try:
             start = datetime.strptime(args.start_date, "%Y-%m-%d")
         except ValueError:
-            print("ERROR: --start-date must be in YYYY-MM-DD format.", file=sys.stderr)
+            print("Error: --start-date must be in YYYY-MM-DD format.", file=sys.stderr)
             sys.exit(5)
     elif args.year is not None:
         if args.year < 2000 or args.year > 2100:
-            print("ERROR: --year must be a reasonable value (e.g. 2015-2030).", file=sys.stderr)
+            print("Error: --year must be a reasonable value (e.g. 2015-2030).", file=sys.stderr)
             sys.exit(5)
         start = get_first_sunday_of_year(args.year)
         start += timedelta(weeks=args.offset_weeks)
@@ -275,6 +278,7 @@ def cli() -> None:
         force=args.force,
         in_place=args.in_place,
         art_branch=args.art_branch,
+        username=args.username,
     )
 
 
