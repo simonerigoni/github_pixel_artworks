@@ -43,13 +43,13 @@ The owner primarily uses **this repository itself** as the canvas for the artwor
 Note: `pyproject.toml` declares `requires-python = ">=3.12"`, even if the setup script mentions 3.11.
 
 ### Code Quality (Mandatory)
-Pre-commit hooks **must pass** before any commit. They are defined in `.pre-commit-config.yaml`:
+Pre-commit hooks **must pass** before any commit. They are defined in `.pre-commit-config.yaml` as `repo: local` hooks that run through `uv run`, so they use the same tool versions as `uv.lock` and CI:
 
-- `uv-lock`
-- `ruff` (with `--fix`)
-- `ruff-format`
+- `uv-lock` (`uv lock --check`)
+- `ruff check --fix`
+- `ruff format`
 - `pyright`
-- Local `pytest` hook (runs `pytest` with coverage and **updates** `COVERAGE.md`)
+- `pytest` hook (runs `pytest` with coverage and **updates** `COVERAGE.md`)
 
 To run checks manually:
 - `pre-commit run --all-files -v`
@@ -104,7 +104,7 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
 - When the user is drawing art in **this repo**, prefer the dedicated branch flow (`art_branch="artworks-2025"` or similar year-specific name) + `in_place=True`. This keeps source code history (with real dates) separate from the backdated art commits. Use the year the art targets in the branch name.
 - The `data/` folder contains the canonical example grids. The GUI saves/loads from there by default. Keep the 7-line format.
 - `data/` files are **not** currently packaged inside the wheel (they are user/developer data).
-- The project has a strong Windows bias (PowerShell setup scripts, `.venv\Scripts\...` paths in pre-commit). Be careful with path separators in scripts/config.
+- The project has a Windows bias (PowerShell setup scripts). Be careful with path separators in scripts/config.
 - When adding features, update:
   - Relevant entry points in `pyproject.toml`
   - Docs in `README.md` and `TODO.md`
@@ -121,7 +121,7 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
   - `F841` (unused variables)
   - pyright issues with `git.exc` (use direct imports) and unbound exceptions in version code.
 - **Packaging**: Uses `hatchling` + `sources = ["src"]`. After structural changes, run `uv build --wheel` and inspect the resulting `.whl` contents.
-- **Pre-commit pytest hook**: It hard-codes a path to `.venv/Scripts/pytest.exe`. If you change the environment setup, this may need updating.
+- **CI**: `.github/workflows/ci.yml` calls the shared workflow `simonerigoni/github/.github/workflows/python-uv-ci.yml@v1` (lock check, ruff, pyright, pytest on the Python in `.python-version`). Renovate settings come from `github>simonerigoni/github:renovate-config`.
 - Never commit without the hooks passing. The `uv-lock` hook is especially important.
 
 ## When in Doubt
@@ -136,7 +136,6 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
 
 - More comprehensive tests
 - Better results / gallery documentation
-- CI (mentioned as done in TODO but verify current state)
 - Packaging the example `data/` files or making them discoverable
 
 This file (AGENTS.md) takes precedence for AI agent behavior on this repository. Direct instructions from the human in the current conversation always override anything written here.
