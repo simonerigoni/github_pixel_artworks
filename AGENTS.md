@@ -23,7 +23,6 @@ The owner primarily uses **this repository itself** as the canvas for the artwor
   - `gui.py` — Tkinter editor (interactive grid, year selector, load/save from data/, generate + push)
 - `data/` — Sample artwork definition files (`.txt`, exactly 7 lines high, variable width; use ` ` / `.` / `x` for empty, `*` / digits for filled days)
 - `tests/` — Pytest tests (currently minimal / dummy)
-- `my_scripts/` — Windows PowerShell helpers (Set-Up.ps1, Config.ps1, Clean-Up.ps1)
 - `temp/` — Original inspiration code (jarreed0/contributionartwork) — do not modify for production
 - `images/` — Screenshots and visuals (if present)
 - Root config: `pyproject.toml`, `.pre-commit-config.yaml`, `uv.lock`, `README.md`, `TODO.md`, `COVERAGE.md`, `LICENSE.md`, `AGENTS.md`
@@ -32,8 +31,7 @@ The owner primarily uses **this repository itself** as the canvas for the artwor
 
 ## Development Environment & Workflow
 
-### Setup (Windows-focused)
-- Run `.\my_scripts\Set-Up.ps1` (installs Python via winget, uv, pre-commit, then `uv sync` + `pre-commit install`).
+### Setup
 - Use `uv` for **everything**:
   - `uv sync`
   - `uv run <command>`
@@ -82,7 +80,7 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
   # ---------------------------------------------------------------------------
   ```
 - Line length: 100 (enforced by ruff).
-- Target Python: 3.12+ (ruff target-version = "py312").
+- Target Python: 3.15+ (ruff infers the target version from `requires-python`).
 - Prefer modern syntax: `list[list[int]]`, `Path | str`, etc.
 - **Variable naming**: Never use single-letter variables that look like numbers or are ambiguous (`l`, `I`, `O`, `0`, etc.). Ruff E741 is enforced. Use `item`, `line`, `idx`, etc.
 - Relative imports inside the package:

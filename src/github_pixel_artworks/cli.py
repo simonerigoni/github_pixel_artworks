@@ -9,17 +9,16 @@ import argparse
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from . import __version__
 from .core import (
     MAX_WEEKS,
     apply_drawing,
+    calculate_multiplier,
+    fetch_max_daily_commits,
     get_auto_start_date,
     get_first_sunday_of_year,
     load_grid,
-    fetch_max_daily_commits,
-    calculate_multiplier,
     preview,
 )
 
@@ -34,7 +33,7 @@ def perform_pixel_art(
     yes: bool = False,
     force: bool = False,
     in_place: bool = False,
-    art_branch: Optional[str] = None,
+    art_branch: str | None = None,
 ) -> None:
     """CLI-facing wrapper. Keeps the classic interactive banners + yes prompts,
     but delegates the actual repo/commit work to the reusable apply_drawing().

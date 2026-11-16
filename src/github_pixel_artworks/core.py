@@ -9,13 +9,12 @@ import os
 import shutil
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Optional
 
 import git
 from git.exc import GitCommandError, InvalidGitRepositoryError
-
 
 # ---------------------------------------------------------------------------
 # Limits (GitHub contribution graphs show ~52 weeks per year view)
@@ -76,7 +75,7 @@ def load_grid(path: Path | str) -> list[list[int]]:
         )
 
     grid: list[list[int]] = []
-    for r, row in enumerate(rows):
+    for row in rows:
         if len(row) != width:
             if len(row) < width:
                 row = row + " " * (width - len(row))
@@ -159,7 +158,7 @@ def get_first_sunday_of_year(year: int) -> datetime:
     return jan1 + timedelta(days=days_until_sunday)
 
 
-def fetch_max_daily_commits(username: str) -> Optional[int]:
+def fetch_max_daily_commits(username: str) -> int | None:
     """
     Fetch the public contributions calendar for a username and return the
     highest number of contributions recorded on any single day.
@@ -226,14 +225,14 @@ def preview(grid: list[list[int]], start_date: datetime, multiplier: int) -> str
 
 def apply_drawing(
     grid: list[list[int]],
-    year: Optional[int] = None,
-    start_date: Optional[datetime] = None,
+    year: int | None = None,
+    start_date: datetime | None = None,
     offset_weeks: int = 0,
     target_repo: str = ".",
     multiplier: int = 1,
     in_place: bool = True,
     force: bool = False,
-    art_branch: Optional[str] = None,
+    art_branch: str | None = None,
     log: Callable[[str], None] = print,
 ) -> int:
     """Non-interactive core that creates the backdated commits for a drawing.
@@ -347,7 +346,7 @@ def apply_drawing(
                 continue
             base = start_date + timedelta(weeks=w, days=h)
             for k in range(level):
-                cdate = base.replace(tzinfo=timezone.utc)
+                cdate = base.replace(tzinfo=UTC)
                 date_str = cdate.strftime("%Y-%m-%dT%H:%M:%S")
                 env = os.environ.copy()
                 env["GIT_AUTHOR_DATE"] = date_str

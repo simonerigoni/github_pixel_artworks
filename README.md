@@ -8,7 +8,7 @@ I want to build a script that can create pixel artworks in my GitHub contributio
 
 ## Software and libraries
 
-This project uses Python 3.12 and the most important packages are:
+This project uses Python 3.15 and the most important packages are:
 
 - **GitPython** (runtime): for git repository operations and creating backdated commits
 - **tkinter** (stdlib): used by the GUI for the interactive pixel editor
@@ -19,11 +19,14 @@ Have a look at the `data` folder and its [DATA.md](data/DATA.md) file.
 
 ## Local configuration
 
-To setup a new local enviroment and install all dependencies you can run `.\my_scripts\Set-Up.ps1`. It will install:
+To set up a local environment and install all dependencies, run `uv sync` from the project folder.
 
-* [Python](https://www.python.org/)
-* [uv](https://docs.astral.sh/uv/)
-* [Pre-commit](https://pre-commit.com/)
+Then run the checks with:
+
+```bash
+uv run pre-commit run --all-files
+uv run pytest
+```
 
 ## Code Quality
 
@@ -50,7 +53,7 @@ It is also possible to run manully the individual tests:
 
 ## Running the code
 
-After setting up the environment with `.\my_scripts\Set-Up.ps1` (or manually with `uv sync` and `pre-commit install`):
+After setting up the environment with `uv sync` (and optionally `uv run pre-commit install`):
 
 ### CLI
 

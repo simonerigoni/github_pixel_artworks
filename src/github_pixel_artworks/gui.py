@@ -23,16 +23,16 @@ Launch:
 import queue
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
-from pathlib import Path
 
 from .core import (
     MAX_WEEKS,
     apply_drawing,
+    get_first_sunday_of_year,
     load_grid,
     save_grid,
-    get_first_sunday_of_year,
 )
 
 # ---------------------------------------------------------------------------
