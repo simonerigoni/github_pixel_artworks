@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from github_pixel_artworks import MAX_WEEKS
-from github_pixel_artworks.core import load_grid, apply_drawing
+from github_pixel_artworks.core import apply_drawing, load_grid
 
 
 def test_max_weeks_constant():

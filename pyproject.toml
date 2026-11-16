@@ -3,7 +3,7 @@ name = "github-pixel-artworks"
 version = "0.1.0"
 description = "Create pixel artworks in your GitHub contributions chart."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.15"
 dependencies = ["GitPython>=3.1.0"]
 
 [dependency-groups]
@@ -27,11 +27,10 @@ venv = ".venv"
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
 
 [tool.ruff.lint]
-# Keep ruff's pre-0.17 default rule set so ruff upgrades don't enable new lint rules
-select = ["E4", "E7", "E9", "F"]
+# pycodestyle/pyflakes defaults plus import sorting (I), pyupgrade (UP), and flake8-bugbear (B)
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
