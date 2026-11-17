@@ -4,7 +4,14 @@ version = "0.1.0"
 description = "Create pixel artworks in your GitHub contributions chart."
 readme = "README.md"
 requires-python = ">=3.15"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE.md"]
+authors = [{ name = "Simone Rigoni" }]
 dependencies = ["GitPython>=3.1.0"]
+
+
+[project.urls]
+Repository = "https://github.com/simonerigoni/github_pixel_artworks"
 
 [dependency-groups]
 dev = [
