@@ -49,7 +49,6 @@ Tests are implemented using `pytest` and coverage is tracked with `pytest-cov`. 
 It is also possible to run manully the individual tests:
 
 - `uv run pytest`
-- `uv run pytest tests/test_dummy.py::test_dummy`
 
 ## Running the code
 
