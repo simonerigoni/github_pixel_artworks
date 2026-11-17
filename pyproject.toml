@@ -11,7 +11,6 @@ dependencies = ["GitPython>=3.1.0"]
 
 
 [project.urls]
-Homepage = "https://github.com/simonerigoni/github_pixel_artworks"
 Repository = "https://github.com/simonerigoni/github_pixel_artworks"
 
 [dependency-groups]
