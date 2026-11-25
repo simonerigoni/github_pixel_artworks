@@ -1,83 +1,164 @@
+"""The github-pixel-artworks command, with apply_drawing stubbed out where it would commit."""
+
 from datetime import datetime
 from pathlib import Path
 
+import git
 import pytest
 
-from github_pixel_artworks.cli import cli, perform_pixel_art
-
-
-def test_perform_pixel_art_dry_run(capsys):
-    grid = [[1, 0], [0, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
-    start = datetime(2026, 1, 4)
-    perform_pixel_art(
-        target_repo=".",
-        grid=grid,
-        start_date=start,
-        multiplier=2,
-        dry_run=True,
-    )
-    out = capsys.readouterr().out
-    assert "GitHub Pixel Art Preview" in out
-    assert "Dry run complete" in out
-    assert "Total commits that will be created: 4" in out
-
-
-def test_perform_pixel_art_empty_grid(capsys):
-    perform_pixel_art(
-        target_repo=".", grid=[[], [], [], [], [], [], []], start_date=datetime(2026, 1, 4)
-    )
-    assert "Nothing to do" in capsys.readouterr().out
-
-
-def test_cli_help(monkeypatch):
-    monkeypatch.setattr("sys.argv", ["github-pixel-artworks", "--help"])
-    with pytest.raises(SystemExit) as exc:
-        cli()
-    assert exc.value.code == 0
-
-
-def _run_cli(monkeypatch, *argv: str) -> dict:
-    """Run the CLI with apply_drawing stubbed out and return the kwargs it received."""
-    captured: dict = {}
-
-    def fake_apply(**kwargs):
-        captured.update(kwargs)
-        return 0
-
-    monkeypatch.setattr("github_pixel_artworks.cli.apply_drawing", fake_apply)
-    monkeypatch.setattr("sys.argv", ["github-pixel-artworks", *argv])
-    cli()
-    return captured
-
+from github_pixel_artworks.artwork import count_commits, load_grid
+from github_pixel_artworks.cli import (
+    EXIT_BAD_ARGUMENT,
+    EXIT_BAD_ARTWORK,
+    EXIT_DRAWING_FAILED,
+    cli,
+    perform_pixel_art,
+)
 
 SIMPLE = str(Path(__file__).resolve().parents[1] / "data" / "simple.txt")
+TWO_PIXELS = [[1, 0], [0, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
 
 
-def test_cli_passes_orphan_branch_name(monkeypatch):
-    kwargs = _run_cli(monkeypatch, "-i", SIMPLE, "--year", "2026", "--branch", "my-art", "-y")
-    assert kwargs["branch"] == "my-art"
-    assert kwargs["in_place"] is False
+@pytest.fixture
+def run_cli(monkeypatch: pytest.MonkeyPatch):
+    """Run the CLI with ``argv``; return the keyword arguments apply_drawing received."""
+
+    def run(*argv: str) -> dict:
+        received: dict = {}
+
+        def fake_apply_drawing(**kwargs: object) -> int:
+            received.update(kwargs)
+            return 0
+
+        monkeypatch.setattr("github_pixel_artworks.cli.apply_drawing", fake_apply_drawing)
+        monkeypatch.setattr("sys.argv", ["github-pixel-artworks", *argv])
+        cli()
+        return received
+
+    return run
 
 
-@pytest.mark.parametrize("alias", ["current", "HEAD", "in-place"])
-def test_cli_branch_aliases_mean_in_place(monkeypatch, alias):
-    kwargs = _run_cli(monkeypatch, "-i", SIMPLE, "--year", "2026", "--branch", alias, "-y")
-    assert kwargs["in_place"] is True
+def exit_code_of(run, *argv: str) -> int | str | None:
+    with pytest.raises(SystemExit) as raised:
+        run(*argv)
+    return raised.value.code
 
 
-def test_cli_expands_bare_artworks_branch_with_year(monkeypatch):
-    kwargs = _run_cli(monkeypatch, "-i", SIMPLE, "--year", "2026", "--art-branch", "artworks", "-y")
-    assert kwargs["art_branch"] == "artworks-2026"
+class TestPerformPixelArt:
+    def test_dry_run_prints_the_preview_without_committing(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        perform_pixel_art(
+            target_repo=".",
+            grid=TWO_PIXELS,
+            start_date=datetime(2026, 1, 4),
+            multiplier=2,
+            dry_run=True,
+        )
+
+        out = capsys.readouterr().out
+        assert "GitHub Pixel Art Preview" in out
+        assert "Total commits that will be created: 4" in out
+        assert "Dry run complete" in out
+
+    def test_empty_grid_does_nothing(self, capsys: pytest.CaptureFixture[str]) -> None:
+        perform_pixel_art(target_repo=".", grid=[[]] * 7, start_date=datetime(2026, 1, 4))
+
+        assert "Nothing to do" in capsys.readouterr().out
+
+    def test_answering_no_aborts(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr("builtins.input", lambda _prompt: "no")
+
+        perform_pixel_art(target_repo=".", grid=TWO_PIXELS, start_date=datetime(2026, 1, 4))
+
+        assert "Aborted by user." in capsys.readouterr().out
+
+    def test_drawing_failure_exits_with_an_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as raised:
+            perform_pixel_art(
+                target_repo=str(tmp_path),
+                grid=TWO_PIXELS,
+                start_date=datetime(2026, 1, 4),
+                yes=True,
+            )
+
+        assert raised.value.code == EXIT_DRAWING_FAILED
+        assert "Error: " in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("value", ["0", "-2"])
-def test_cli_rejects_non_positive_multiplier(monkeypatch, value):
-    with pytest.raises(SystemExit) as exc:
-        _run_cli(monkeypatch, "-i", SIMPLE, "--year", "2026", "--multiplier", value, "-y")
-    assert exc.value.code == 5
+class TestArguments:
+    def test_help_exits_successfully(self, run_cli) -> None:
+        assert exit_code_of(run_cli, "--help") == 0
+
+    def test_a_start_is_required(self, run_cli) -> None:
+        assert exit_code_of(run_cli, "-i", SIMPLE) == 2  # argparse usage error
+
+    def test_year_starts_on_its_first_sunday_plus_offset(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "--offset-weeks", "2", "-y")
+
+        assert received["start_date"] == datetime(2026, 1, 18)
+
+    def test_orphan_branch_name_is_passed_through(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "--branch", "my-art", "-y")
+
+        assert received["branch"] == "my-art"
+        assert received["in_place"] is False
+
+    @pytest.mark.parametrize("alias", ["current", "HEAD", "in-place"])
+    def test_branch_aliases_mean_in_place(self, run_cli, alias: str) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "--branch", alias, "-y")
+
+        assert received["in_place"] is True
+
+    def test_bare_artworks_branch_gets_the_year(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "--art-branch", "artworks", "-y")
+
+        assert received["art_branch"] == "artworks-2026"
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ("--year", "2026", "--multiplier", "0"),
+            ("--year", "2026", "--offset-weeks", "53"),
+            ("--year", "1999"),
+            ("--start-date", "2026/01/04"),
+        ],
+    )
+    def test_invalid_values_exit_with_bad_argument(self, run_cli, argv: tuple[str, ...]) -> None:
+        assert exit_code_of(run_cli, "-i", SIMPLE, *argv, "-y") == EXIT_BAD_ARGUMENT
+
+    def test_unreadable_artwork_exits_with_bad_artwork(self, run_cli, tmp_path: Path) -> None:
+        missing = str(tmp_path / "missing.txt")
+
+        assert exit_code_of(run_cli, "-i", missing, "--year", "2026") == EXIT_BAD_ARTWORK
+
+    def test_non_sunday_start_warns(self, run_cli, capsys: pytest.CaptureFixture[str]) -> None:
+        run_cli("-i", SIMPLE, "--start-date", "2026-01-05", "-y")
+
+        assert "Warning: 2026-01-05 is not a Sunday" in capsys.readouterr().err
 
 
-def test_cli_requires_a_start(monkeypatch):
-    with pytest.raises(SystemExit) as exc:
-        _run_cli(monkeypatch, "-i", SIMPLE)
-    assert exc.value.code == 2
+def test_cli_draws_into_a_real_repo(git_repo: git.Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = str(git_repo.working_tree_dir)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "github-pixel-artworks",
+            "-i",
+            SIMPLE,
+            "--year",
+            "2026",
+            "--in-place",
+            "-y",
+            "--target-repo",
+            root,
+        ],
+    )
+
+    cli()
+
+    assert len(list(git_repo.iter_commits())) == 1 + count_commits(load_grid(SIMPLE))

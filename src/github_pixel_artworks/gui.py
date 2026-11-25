@@ -1,24 +1,8 @@
-#!/usr/bin/env python
-"""
-github-pixel-artworks GUI
+"""Tkinter editor: ``github-pixel-artworks-gui``.
 
-Interactive editor for creating 7-row pixel art grids (for GitHub contribution graphs).
-
-- Pick an intensity level (1..4, GitHub's four greens) and click/drag to paint it;
-  clicking a cell that already has the selected level erases it.
-- Add/remove week columns.
-- Select year (auto positions to first Sunday of the year).
-- Save .txt files to the data/ folder (compatible with the CLI).
-- "Generate Art" button: creates the backdated commits for the selected year (in-place).
-  The "Use dedicated art branch" checkbox (on by default) tells the core to auto-manage
-  stashing + switching to the branch (and back afterwards). The suggested branch name
-  is "artworks-<year>" (e.g. artworks-2016) so each year's art lives on its own branch.
-- "Push to GitHub" button: pushes the branch that received the art commits.
-
-Launch:
-    python gui.py
-    # or after `uv sync` / install:
-    github-pixel-artworks-gui
+Draw an artwork with GitHub's four shades, save it to ``data/``, then create the
+backdated commits for a year and push them. Git work runs on a worker thread;
+worker threads talk to Tk only through queues drained on the main thread.
 """
 
 import queue
@@ -32,121 +16,98 @@ from tkinter.scrolledtext import ScrolledText
 
 import git
 
-from .core import (
+from .artwork import (
+    DAYS_PER_WEEK,
+    LEVEL_COLORS,
     MAX_WEEKS,
-    apply_drawing,
+    Grid,
+    count_commits,
     drawing_path,
-    get_first_sunday_of_year,
+    level_color,
     load_grid,
     save_grid,
 )
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+from .dates import MAX_YEAR, MIN_YEAR, get_first_sunday_of_year
+from .painter import apply_drawing
 
 DATA_DIR = Path("data")
+
 CELL_SIZE = 18
-EMPTY_COLOR = "#ebedf0"
-# GitHub's contribution greens for levels 1..4 (higher levels are shown as 4)
-LEVEL_COLORS = {1: "#9be9a8", 2: "#40c463", 3: "#30a14e", 4: "#216e39"}
-MAX_LEVEL = max(LEVEL_COLORS)
-GRID_BG = "#f0f0f0"
+GRID_BACKGROUND = "#f0f0f0"
+CELL_OUTLINE = "#999"
+CANVAS_BORDER = "#888"
+DARK_LEVEL_TEXT_FROM = 3
+"""Level from which the picker button label is white instead of black."""
 
-DRAWINGS_PANE_WIDTH = 170
+DEFAULT_COLUMNS = 10
+MIN_COLUMNS = 3
+
+WINDOW_GEOMETRY = "1540x600"
+WINDOW_MIN_SIZE = (700, 500)
+DRAWINGS_PANE_WIDTH = 210
+DRAWING_BUTTON_WIDTH = 7
+"""Characters; keeps Load, Delete and Refresh on one row of the drawings pane."""
 EDITOR_PANE_PADDING = 24
-
-MIN_COLS = 3
-MAX_COLS = MAX_WEEKS
-
-
-# ---------------------------------------------------------------------------
-# Main GUI Class
-# ---------------------------------------------------------------------------
+QUEUE_POLL_MS = 80
+STATUS_READY = "Ready"
+STATUS_HINT = "Ready - draw on the grid, pick a year, then Generate and Push."
 
 
 class PixelArtGUI:
-    """Tkinter editor: draw a 7-row grid, save it to data/, generate and push the art."""
+    """The editor window: drawings list, grid editor, actions and log."""
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        root.title("GitHub Pixel Artworks - Drawer")
-        root.geometry("1500x600")
-        root.minsize(700, 500)
+        root.title("GitHub Pixel Artworks")
+        root.geometry(WINDOW_GEOMETRY)
+        root.minsize(*WINDOW_MIN_SIZE)
 
-        # Internal state: 7 rows x N cols, values are intensity levels (0 = empty)
-        self.grid: list[list[int]] = [[0] * 10 for _ in range(7)]
-        self.current_cols = 10
-
-        # Value painted while dragging (set by the click that starts the stroke)
-        self._paint_value = 1
-        # Intensity level the next click paints (1..MAX_LEVEL)
+        self.grid: Grid = _empty_grid(DEFAULT_COLUMNS)
         self.level_var = tk.IntVar(value=1)
-        # Branch that received the last generated art (what "Push" pushes)
-        self._art_target_branch: str | None = None
+        self._stroke_value = 1
+        self._push_branch: str | None = None
+        self._log_queue: queue.Queue[str] = queue.Queue()
+        self._ui_queue: queue.Queue[Callable[[], object]] = queue.Queue()
 
-        # For thread <-> GUI communication: worker threads never touch Tk directly,
-        # they enqueue log lines and UI callbacks that the main thread drains.
-        self.log_queue: queue.Queue[str] = queue.Queue()
-        self.ui_queue: queue.Queue[Callable[[], object]] = queue.Queue()
-
-        # Make sure data dir exists before listing it
         DATA_DIR.mkdir(exist_ok=True)
-
-        self._build_ui()
+        self._build_toolbar()
+        self._build_panes()
+        self._build_status_bar()
         self._size_panes()
-        self._refresh_canvas()
+
+        self._redraw()
         self._populate_drawings_list()
-        self._update_preview_label()
-        self._update_art_branch_suggestion()
+        self._suggest_art_branch()
+        self.root.after(QUEUE_POLL_MS, self._drain_queues)
 
-        # Poll the log queue periodically
-        self.root.after(80, self._poll_log_queue)
+    @property
+    def columns(self) -> int:
+        """Number of week columns in the grid."""
+        return len(self.grid[0])
 
-    # ------------------------------------------------------------------
-    # UI Construction
-    # ------------------------------------------------------------------
+    # Layout ----------------------------------------------------------------
 
-    def _build_ui(self) -> None:
-        # Top control bar
-        top = ttk.Frame(self.root, padding=8)
-        top.pack(fill=tk.X)
+    def _build_toolbar(self) -> None:
+        bar = ttk.Frame(self.root, padding=8)
+        bar.pack(fill=tk.X)
 
-        ttk.Label(top, text="Year:").pack(side=tk.LEFT)
         self.year_var = tk.IntVar(value=date.today().year)
-        year_spin = ttk.Spinbox(
-            top,
-            from_=2010,
-            to=2035,
-            textvariable=self.year_var,
-            width=6,
-            command=self._on_params_changed,
-        )
-        year_spin.pack(side=tk.LEFT, padx=(2, 12))
-
-        ttk.Label(top, text="Offset weeks:").pack(side=tk.LEFT)
         self.offset_var = tk.IntVar(value=0)
-        offset_spin = ttk.Spinbox(
-            top,
-            from_=0,
-            to=MAX_WEEKS,
-            textvariable=self.offset_var,
-            width=4,
-            command=self._on_params_changed,
-        )
-        offset_spin.pack(side=tk.LEFT, padx=(2, 12))
+        self._add_spinbox(bar, "Year:", self.year_var, MIN_YEAR, MAX_YEAR, width=6)
+        self._add_spinbox(bar, "Offset weeks:", self.offset_var, 0, MAX_WEEKS, width=4)
 
-        ttk.Button(top, text="New", command=self._new_grid).pack(side=tk.LEFT, padx=4)
-        ttk.Button(top, text="Add week", command=lambda: self._change_cols(+1)).pack(side=tk.LEFT)
-        ttk.Button(top, text="Remove week", command=lambda: self._change_cols(-1)).pack(
-            side=tk.LEFT
-        )
-        ttk.Button(top, text="Clear", command=self._clear_grid).pack(side=tk.LEFT, padx=4)
+        for text, command in (
+            ("New", self._new_grid),
+            ("Add week", lambda: self._resize_grid(self.columns + 1)),
+            ("Remove week", lambda: self._resize_grid(self.columns - 1)),
+            ("Clear", self._clear_grid),
+        ):
+            ttk.Button(bar, text=text, command=command).pack(side=tk.LEFT, padx=2)
 
-        ttk.Label(top, text="Level:").pack(side=tk.LEFT, padx=(12, 2))
+        ttk.Label(bar, text="Level:").pack(side=tk.LEFT, padx=(12, 2))
         for level, color in LEVEL_COLORS.items():
             tk.Radiobutton(
-                top,
+                bar,
                 text=str(level),
                 variable=self.level_var,
                 value=level,
@@ -155,429 +116,372 @@ class PixelArtGUI:
                 bg=color,
                 activebackground=color,
                 selectcolor=color,
-                fg="white" if level >= 3 else "black",
+                fg="white" if level >= DARK_LEVEL_TEXT_FROM else "black",
                 offrelief=tk.FLAT,
                 relief=tk.RAISED,
             ).pack(side=tk.LEFT, padx=1)
 
-        # Main area: left = drawings list, center = editor, right = actions
-        main_pane = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        main_pane.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
-        self._main_pane = main_pane
+    def _add_spinbox(
+        self, parent: ttk.Frame, label: str, variable: tk.IntVar, low: int, high: int, width: int
+    ) -> None:
+        ttk.Label(parent, text=label).pack(side=tk.LEFT)
+        ttk.Spinbox(
+            parent,
+            from_=low,
+            to=high,
+            textvariable=variable,
+            width=width,
+            command=self._on_schedule_changed,
+        ).pack(side=tk.LEFT, padx=(2, 12))
 
-        # Left: saved drawings
-        left_frame = ttk.LabelFrame(main_pane, text="Saved in data/", padding=6)
-        main_pane.add(left_frame, weight=1)
+    def _build_panes(self) -> None:
+        self._panes = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        self._panes.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        self._panes.add(self._build_drawings_pane(self._panes), weight=1)
+        self._panes.add(self._build_editor_pane(self._panes), weight=3)
+        self._panes.add(self._build_actions_pane(self._panes), weight=2)
 
-        self.drawings_list = tk.Listbox(left_frame, height=12, exportselection=False)
+    def _build_drawings_pane(self, parent: ttk.PanedWindow) -> ttk.LabelFrame:
+        pane = ttk.LabelFrame(parent, text=f"Saved in {DATA_DIR}/", padding=6)
+        self.drawings_list = tk.Listbox(pane, height=12, exportselection=False)
         self.drawings_list.pack(fill=tk.BOTH, expand=True)
-        self.drawings_list.bind("<Double-Button-1>", lambda e: self._load_selected())
+        self.drawings_list.bind("<Double-Button-1>", lambda _event: self._load_selected())
 
-        btns = ttk.Frame(left_frame)
-        btns.pack(fill=tk.X, pady=4)
-        ttk.Button(btns, text="Load", command=self._load_selected).pack(
-            side=tk.LEFT, expand=True, fill=tk.X
-        )
-        ttk.Button(btns, text="Delete", command=self._delete_selected).pack(
-            side=tk.LEFT, expand=True, fill=tk.X
-        )
-        ttk.Button(btns, text="Refresh", command=self._populate_drawings_list).pack(
-            side=tk.LEFT, expand=True, fill=tk.X
-        )
+        buttons = ttk.Frame(pane)
+        buttons.pack(fill=tk.X, pady=4)
+        for text, command in (
+            ("Load", self._load_selected),
+            ("Delete", self._delete_selected),
+            ("Refresh", self._populate_drawings_list),
+        ):
+            ttk.Button(buttons, text=text, width=DRAWING_BUTTON_WIDTH, command=command).pack(
+                side=tk.LEFT, expand=True, fill=tk.X
+            )
+        return pane
 
-        # Center: the editor canvas + preview
-        center = ttk.Frame(main_pane)
-        main_pane.add(center, weight=3)
-
+    def _build_editor_pane(self, parent: ttk.PanedWindow) -> ttk.Frame:
+        pane = ttk.Frame(parent)
         self.canvas = tk.Canvas(
-            center, bg=GRID_BG, highlightthickness=1, highlightbackground="#888"
+            pane, bg=GRID_BACKGROUND, highlightthickness=1, highlightbackground=CANVAS_BORDER
         )
-        # Wide artworks (up to 52 weeks) scroll horizontally instead of being cut off.
-        x_scroll = ttk.Scrollbar(center, orient=tk.HORIZONTAL, command=self.canvas.xview)
-        self.canvas.configure(xscrollcommand=x_scroll.set)
+        scrollbar = ttk.Scrollbar(pane, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        self.canvas.configure(xscrollcommand=scrollbar.set)
         self.canvas.pack(fill=tk.BOTH, expand=True, padx=4, pady=(4, 0))
-        x_scroll.pack(fill=tk.X, padx=4)
+        scrollbar.pack(fill=tk.X, padx=4)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
 
-        self.preview_label = ttk.Label(center, text="", font=("TkDefaultFont", 9), justify=tk.LEFT)
-        self.preview_label.pack(anchor=tk.W, padx=4)
+        self.schedule_label = ttk.Label(pane, font=("TkDefaultFont", 9), justify=tk.LEFT)
+        self.schedule_label.pack(anchor=tk.W, padx=4)
+        return pane
 
-        # Right: actions + log
-        right = ttk.Frame(main_pane)
-        main_pane.add(right, weight=2)
-
-        action_frame = ttk.LabelFrame(right, text="Actions (this repo)", padding=6)
-        action_frame.pack(fill=tk.X, pady=(0, 6))
+    def _build_actions_pane(self, parent: ttk.PanedWindow) -> ttk.Frame:
+        pane = ttk.Frame(parent)
+        actions = ttk.LabelFrame(pane, text="Actions (this repo)", padding=6)
+        actions.pack(fill=tk.X, pady=(0, 6))
 
         self.filename_var = tk.StringVar(value="my_art")
-        ttk.Label(action_frame, text="Filename (no .txt):").pack(anchor=tk.W)
-        ttk.Entry(action_frame, textvariable=self.filename_var).pack(fill=tk.X, pady=2)
-
-        ttk.Button(action_frame, text="Save to data/", command=self._save_drawing).pack(
+        ttk.Label(actions, text="Filename (no .txt):").pack(anchor=tk.W)
+        ttk.Entry(actions, textvariable=self.filename_var).pack(fill=tk.X, pady=2)
+        ttk.Button(actions, text=f"Save to {DATA_DIR}/", command=self._save_drawing).pack(
             fill=tk.X, pady=2
         )
+        ttk.Separator(actions, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
 
-        ttk.Separator(action_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
-
-        # Dedicated art branch support (highly recommended for this repo)
         self.use_art_branch_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            action_frame,
-            text="Use dedicated art branch",
-            variable=self.use_art_branch_var,
+            actions, text="Use dedicated art branch", variable=self.use_art_branch_var
         ).pack(anchor=tk.W)
+        branch_row = ttk.Frame(actions)
+        branch_row.pack(fill=tk.X, pady=2)
+        self.art_branch_var = tk.StringVar()
+        ttk.Label(branch_row, text="Art branch name:").pack(side=tk.LEFT)
+        ttk.Entry(branch_row, textvariable=self.art_branch_var, width=18).pack(side=tk.LEFT, padx=4)
 
-        # Start with a year-specific branch name per user preference (artworks-2016, artworks-2025, ...)
-        year_for_branch = self.year_var.get()
-        self.art_branch_var = tk.StringVar(value=f"artworks-{year_for_branch}")
-        branch_frame = ttk.Frame(action_frame)
-        ttk.Label(branch_frame, text="Art branch name:").pack(side=tk.LEFT)
-        ttk.Entry(branch_frame, textvariable=self.art_branch_var, width=18).pack(
-            side=tk.LEFT, padx=4
+        self.generate_button = ttk.Button(
+            actions, text="Generate Art for Selected Year", command=self._on_generate_clicked
         )
-        branch_frame.pack(fill=tk.X, pady=2)
-
-        self.generate_btn = ttk.Button(
-            action_frame, text="Generate Art for Selected Year", command=self._on_generate_clicked
+        self.generate_button.pack(fill=tk.X, pady=2)
+        self.push_button = ttk.Button(
+            actions, text="Push to GitHub", command=self._on_push_clicked, state=tk.DISABLED
         )
-        self.generate_btn.pack(fill=tk.X, pady=2)
-
-        self.push_btn = ttk.Button(
-            action_frame, text="Push to GitHub", command=self._on_push_clicked, state=tk.DISABLED
-        )
-        self.push_btn.pack(fill=tk.X, pady=2)
-
+        self.push_button.pack(fill=tk.X, pady=2)
         self.force_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            action_frame,
-            text="Force (allow a dirty working tree)",
-            variable=self.force_var,
+            actions, text="Force (allow a dirty working tree)", variable=self.force_var
         ).pack(anchor=tk.W, pady=(4, 0))
 
-        # Log area
-        log_frame = ttk.LabelFrame(right, text="Log", padding=4)
+        log_frame = ttk.LabelFrame(pane, text="Log", padding=4)
         log_frame.pack(fill=tk.BOTH, expand=True)
-
         self.log_text = ScrolledText(log_frame, height=12, state=tk.DISABLED, wrap=tk.WORD)
         self.log_text.pack(fill=tk.BOTH, expand=True)
+        return pane
 
-        # Status bar
-        self.status_var = tk.StringVar(
-            value="Ready - draw on the grid, pick year, use dedicated branch option, then Generate + Push"
-        )
+    def _build_status_bar(self) -> None:
+        self.status_var = tk.StringVar(value=STATUS_HINT)
         ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, padding=2).pack(
             fill=tk.X, side=tk.BOTTOM
         )
 
     def _size_panes(self) -> None:
-        """Open with the editor pane wide enough for a full year (MAX_WEEKS columns)."""
+        """Open with the editor pane wide enough for a full year of columns."""
         self.root.update_idletasks()
-        self._main_pane.sashpos(0, DRAWINGS_PANE_WIDTH)
-        self._main_pane.sashpos(1, DRAWINGS_PANE_WIDTH + MAX_COLS * CELL_SIZE + EDITOR_PANE_PADDING)
+        self._panes.sashpos(0, DRAWINGS_PANE_WIDTH)
+        self._panes.sashpos(1, DRAWINGS_PANE_WIDTH + MAX_WEEKS * CELL_SIZE + EDITOR_PANE_PADDING)
 
-    # ------------------------------------------------------------------
-    # Canvas / Grid drawing
-    # ------------------------------------------------------------------
+    # Grid editing ----------------------------------------------------------
 
-    def _refresh_canvas(self) -> None:
+    def _redraw(self) -> None:
+        """Repaint every cell and refresh the schedule summary."""
         self.canvas.delete("all")
-        rows = 7
-        cols = self.current_cols
-        w = CELL_SIZE
-        h = CELL_SIZE
-
-        for r in range(rows):
-            for c in range(cols):
-                x0 = c * w
-                y0 = r * h
-                x1 = x0 + w
-                y1 = y0 + h
-                fill = _cell_color(self.grid[r][c])
+        for row in range(DAYS_PER_WEEK):
+            for column in range(self.columns):
+                x, y = column * CELL_SIZE, row * CELL_SIZE
                 self.canvas.create_rectangle(
-                    x0, y0, x1, y1, fill=fill, outline="#999", tags=(f"cell_{r}_{c}",)
+                    x,
+                    y,
+                    x + CELL_SIZE,
+                    y + CELL_SIZE,
+                    fill=level_color(self.grid[row][column]),
+                    outline=CELL_OUTLINE,
+                    tags=(f"cell_{row}_{column}",),
                 )
+        width, height = self.columns * CELL_SIZE, DAYS_PER_WEEK * CELL_SIZE
+        self.canvas.config(width=width + 2, height=height + 2, scrollregion=(0, 0, width, height))
+        self._update_schedule_label()
 
-        # size the canvas
-        self.canvas.config(
-            width=cols * w + 2, height=rows * h + 2, scrollregion=(0, 0, cols * w, rows * h)
-        )
-
-    def _cell_at(self, x: int, y: int) -> tuple[int, int] | None:
-        r, c = y // CELL_SIZE, x // CELL_SIZE
-        if 0 <= r < 7 and 0 <= c < self.current_cols:
-            return r, c
+    def _cell_at(self, event: tk.Event) -> tuple[int, int] | None:
+        """Return the (row, column) under a mouse event, or None outside the grid."""
+        row = int(self.canvas.canvasy(event.y)) // CELL_SIZE
+        column = int(self.canvas.canvasx(event.x)) // CELL_SIZE
+        if 0 <= row < DAYS_PER_WEEK and 0 <= column < self.columns:
+            return row, column
         return None
 
     def _on_canvas_click(self, event: tk.Event) -> None:
-        # A click paints the selected level (or erases a cell that already has it)
-        # and sets the value the rest of the drag paints.
-        cell = self._cell_at(int(self.canvas.canvasx(event.x)), int(self.canvas.canvasy(event.y)))
+        """Paint the selected level, or erase a cell that already has it.
+
+        The result becomes the value the rest of the drag paints.
+        """
+        cell = self._cell_at(event)
         if cell is None:
             return
-        r, c = cell
         level = self.level_var.get()
-        self._paint_value = 0 if self.grid[r][c] == level else level
-        self._set_cell(r, c, self._paint_value)
+        self._stroke_value = 0 if self.grid[cell[0]][cell[1]] == level else level
+        self._set_cell(*cell, self._stroke_value)
 
     def _on_canvas_drag(self, event: tk.Event) -> None:
-        # Dragging paints (instead of toggling on every motion event, which flickered).
-        cell = self._cell_at(int(self.canvas.canvasx(event.x)), int(self.canvas.canvasy(event.y)))
+        cell = self._cell_at(event)
         if cell is not None:
-            self._set_cell(*cell, self._paint_value)
+            self._set_cell(*cell, self._stroke_value)
 
-    def _set_cell(self, r: int, c: int, value: int) -> None:
-        if self.grid[r][c] == value:
-            return
-        self.grid[r][c] = value
-        self._refresh_canvas()
-        self._update_preview_label()
+    def _set_cell(self, row: int, column: int, level: int) -> None:
+        if self.grid[row][column] != level:
+            self.grid[row][column] = level
+            self._redraw()
 
-    def _change_cols(self, delta: int) -> None:
-        new_cols = max(MIN_COLS, min(MAX_COLS, self.current_cols + delta))
-        if new_cols == self.current_cols:
-            return
-        old_cols = self.current_cols
-        self.current_cols = new_cols
-
-        if new_cols > old_cols:
-            # add columns of zeros
-            for r in range(7):
-                self.grid[r].extend([0] * (new_cols - old_cols))
-        else:
-            # truncate
-            for r in range(7):
-                self.grid[r] = self.grid[r][:new_cols]
-
-        self._refresh_canvas()
-        self._update_preview_label()
+    def _resize_grid(self, columns: int) -> None:
+        """Add empty columns or drop columns on the right, within the allowed width."""
+        columns = max(MIN_COLUMNS, min(MAX_WEEKS, columns))
+        if columns != self.columns:
+            self.grid = [(row + [0] * columns)[:columns] for row in self.grid]
+            self._redraw()
 
     def _clear_grid(self) -> None:
-        self.grid = [[0] * self.current_cols for _ in range(7)]
-        self._refresh_canvas()
-        self._update_preview_label()
+        self.grid = _empty_grid(self.columns)
+        self._redraw()
 
     def _new_grid(self) -> None:
-        self.current_cols = 10
-        self.grid = [[0] * self.current_cols for _ in range(7)]
+        self.grid = _empty_grid(DEFAULT_COLUMNS)
         self.filename_var.set("new_drawing")
-        self._refresh_canvas()
-        self._update_preview_label()
+        self._redraw()
 
-    # ------------------------------------------------------------------
-    # Preview / params
-    # ------------------------------------------------------------------
+    # Schedule (year / offset) ----------------------------------------------
 
-    def _on_params_changed(self) -> None:
-        self._update_preview_label()
-        self._update_art_branch_suggestion()
+    def _on_schedule_changed(self) -> None:
+        self._update_schedule_label()
+        self._suggest_art_branch()
 
-    def _update_preview_label(self) -> None:
+    def _update_schedule_label(self) -> None:
         try:
-            year = self.year_var.get()
-            offset = self.offset_var.get()
+            year, offset = self.year_var.get(), self.offset_var.get()
             start = get_first_sunday_of_year(year) + timedelta(weeks=offset)
-            w = self.current_cols
-            end = start + timedelta(weeks=w - 1, days=6)
-            total = sum(sum(row) for row in self.grid)  # multiplier=1 for preview
-            self.preview_label.config(
-                text=(
-                    f"Year {year}, offset {offset} weeks\n"
-                    f"{start.date()} (Sun) to {end.date()} (Sat), {total} commits"
-                )
-            )
         except tk.TclError, ValueError, OverflowError:
-            self.preview_label.config(text="Invalid year/offset")
+            self.schedule_label.config(text="Invalid year/offset")
+            return
+        end = start + timedelta(weeks=self.columns - 1, days=DAYS_PER_WEEK - 1)
+        self.schedule_label.config(
+            text=(
+                f"Year {year}, offset {offset} weeks\n"
+                f"{start.date()} (Sun) to {end.date()} (Sat), {count_commits(self.grid)} commits"
+            )
+        )
 
-    def _update_art_branch_suggestion(self) -> None:
-        """Keep the art branch name in sync with the selected year (user preference:
-        use year-specific branches like 'artworks-2016' instead of a single 'artworks').
-        Only auto-updates if the field still looks like a generated suggestion.
-        """
+    def _suggest_art_branch(self) -> None:
+        """Keep the art branch name at ``artworks-<year>`` unless the user typed their own."""
         try:
             year = self.year_var.get()
-        except tk.TclError:  # spinbox temporarily holds a non-number
+        except tk.TclError:  # the spinbox holds a non-number while typing
             return
         current = self.art_branch_var.get().strip()
-        if not current or current.startswith("artworks-") or current == "artworks":
+        if not current or current == "artworks" or current.startswith("artworks-"):
             self.art_branch_var.set(f"artworks-{year}")
 
-    # ------------------------------------------------------------------
-    # Data (drawings) list & load/save
-    # ------------------------------------------------------------------
+    # Drawing files ---------------------------------------------------------
 
     def _populate_drawings_list(self) -> None:
         self.drawings_list.delete(0, tk.END)
-        if not DATA_DIR.exists():
-            return
-        for p in sorted(DATA_DIR.glob("*.txt")):
-            self.drawings_list.insert(tk.END, p.name)
+        for path in sorted(DATA_DIR.glob("*.txt")):
+            self.drawings_list.insert(tk.END, path.name)
+
+    def _selected_drawing(self) -> str | None:
+        selection = self.drawings_list.curselection()
+        return self.drawings_list.get(selection[0]) if selection else None
 
     def _load_selected(self) -> None:
-        sel = self.drawings_list.curselection()
-        if not sel:
+        name = self._selected_drawing()
+        if name is None:
             return
-        name = self.drawings_list.get(sel[0])
-        path = DATA_DIR / name
         try:
-            self.grid = load_grid(path)
-            self.current_cols = len(self.grid[0]) if self.grid else 10
-            self.filename_var.set(Path(name).stem)
-            self._refresh_canvas()
-            self._update_preview_label()
-            self._log(f"Loaded {name}")
-        except Exception as e:
-            messagebox.showerror("Load error", str(e))
+            self.grid = load_grid(drawing_path(DATA_DIR, name))
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Load error", str(error))
+            return
+        self.filename_var.set(Path(name).stem)
+        self._redraw()
+        self._log(f"Loaded {name}")
 
     def _delete_selected(self) -> None:
-        sel = self.drawings_list.curselection()
-        if not sel:
-            return
-        name = self.drawings_list.get(sel[0])
-        if not messagebox.askyesno("Delete", f"Delete {name}?"):
+        name = self._selected_drawing()
+        if name is None or not messagebox.askyesno("Delete", f"Delete {name}?"):
             return
         try:
             drawing_path(DATA_DIR, name).unlink(missing_ok=True)
-        except (OSError, ValueError) as e:
-            messagebox.showerror("Delete error", str(e))
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Delete error", str(error))
         self._populate_drawings_list()
 
     def _save_drawing(self) -> None:
         try:
             path = drawing_path(DATA_DIR, self.filename_var.get())
             save_grid(path, self.grid)
-            self._log(f"Saved to {path}")
-            self._populate_drawings_list()
-        except Exception as e:
-            messagebox.showerror("Save error", str(e))
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Save error", str(error))
+            return
+        self._log(f"Saved to {path}")
+        self._populate_drawings_list()
 
-    # ------------------------------------------------------------------
-    # Generate + Push (the important buttons)
-    # ------------------------------------------------------------------
+    # Generate and push -----------------------------------------------------
 
     def _on_generate_clicked(self) -> None:
         if not messagebox.askyesno(
             "Generate Art",
-            "This will create backdated commits in the current repository\n"
-            "(this repo is your dedicated pixel-art canvas).\n\nContinue?",
+            "This creates backdated commits in the current repository.\n\nContinue?",
         ):
             return
-
-        self.generate_btn.config(state=tk.DISABLED)
-        self.push_btn.config(state=tk.DISABLED)
-        self.status_var.set("Generating...")
-
         try:
-            year = self.year_var.get()
-            offset = self.offset_var.get()
+            year, offset = self.year_var.get(), self.offset_var.get()
         except tk.TclError:
             messagebox.showerror("Generate Art", "Year and offset must be whole numbers.")
-            self.generate_btn.config(state=tk.NORMAL)
-            self.status_var.set("Ready")
             return
         art_branch = self.art_branch_var.get().strip() if self.use_art_branch_var.get() else None
-        # Read Tk variables here: worker threads must not touch Tk objects.
         force = self.force_var.get()
+        grid = [row[:] for row in self.grid]
 
-        def worker() -> None:
+        self.generate_button.config(state=tk.DISABLED)
+        self.push_button.config(state=tk.DISABLED)
+        self.status_var.set("Generating...")
+
+        def generate() -> None:
             try:
-                n = apply_drawing(
-                    grid=self.grid,
+                count = apply_drawing(
+                    grid=grid,
                     year=year,
                     offset_weeks=offset,
-                    target_repo=".",
                     in_place=True,
                     force=force,
                     art_branch=art_branch,
                     log=self._queue_log,
                 )
-                target = art_branch or _active_branch(git.Repo("."))
-                self._call_in_ui(lambda: setattr(self, "_art_target_branch", target))
-                where = f" on branch {target}" if target else ""
-                self._queue_log(f"\n=== SUCCESS: {n} commits created for year {year}{where} ===")
-                if target:
-                    self._call_in_ui(lambda: self.push_btn.config(state=tk.NORMAL))
-            except Exception as e:  # show any failure in the log instead of killing the thread
-                self._queue_log(f"\nError: {e}")
+                branch = art_branch or _active_branch(git.Repo("."))
+                self._queue_log(
+                    f"Created {count} commits for {year} on {branch or 'detached HEAD'}."
+                )
+                self._call_in_ui(lambda: self._set_push_branch(branch))
+            except Exception as error:  # report any failure in the log
+                self._queue_log(f"Error: {error}")
             finally:
-                self._call_in_ui(lambda: self.generate_btn.config(state=tk.NORMAL))
-                self._call_in_ui(lambda: self.status_var.set("Ready"))
+                self._call_in_ui(lambda: self.generate_button.config(state=tk.NORMAL))
+                self._call_in_ui(lambda: self.status_var.set(STATUS_READY))
 
-        threading.Thread(target=worker, daemon=True).start()
+        threading.Thread(target=generate, daemon=True).start()
+
+    def _set_push_branch(self, branch: str | None) -> None:
+        self._push_branch = branch
+        self.push_button.config(state=tk.NORMAL if branch else tk.DISABLED)
 
     def _on_push_clicked(self) -> None:
-        branch = self._art_target_branch
+        branch = self._push_branch
         if not branch:
             return
-        self.push_btn.config(state=tk.DISABLED)
+        self.push_button.config(state=tk.DISABLED)
         self.status_var.set("Pushing...")
 
-        def worker() -> None:
+        def push() -> None:
             try:
-                self._queue_log(f"Pushing {branch} ...")
+                self._queue_log(f"Pushing {branch}...")
                 git.Repo(".").git.push("origin", branch)
-                self._queue_log("Push completed successfully.")
-            except Exception as e:  # show any failure in the log instead of killing the thread
-                self._queue_log(f"Push error: {e}")
+                self._queue_log("Push completed.")
+            except Exception as error:  # report any failure in the log
+                self._queue_log(f"Error: push failed: {error}")
             finally:
-                self._call_in_ui(lambda: self.status_var.set("Ready"))
-                # Re-enable push in case user wants to retry
-                self._call_in_ui(lambda: self.push_btn.config(state=tk.NORMAL))
+                self._call_in_ui(lambda: self.push_button.config(state=tk.NORMAL))
+                self._call_in_ui(lambda: self.status_var.set(STATUS_READY))
 
-        threading.Thread(target=worker, daemon=True).start()
+        threading.Thread(target=push, daemon=True).start()
 
-    # ------------------------------------------------------------------
-    # Logging helpers (thread safe)
-    # ------------------------------------------------------------------
+    # Log and thread hand-off -----------------------------------------------
 
-    def _queue_log(self, msg: str) -> None:
-        self.log_queue.put(msg)
+    def _queue_log(self, message: str) -> None:
+        """Log from any thread."""
+        self._log_queue.put(message)
 
     def _call_in_ui(self, func: Callable[[], object]) -> None:
-        """Run ``func`` on the Tk main thread (safe to call from worker threads)."""
-        self.ui_queue.put(func)
+        """Run ``func`` on the Tk main thread; safe to call from any thread."""
+        self._ui_queue.put(func)
 
-    def _poll_log_queue(self) -> None:
-        while True:
-            try:
-                msg = self.log_queue.get_nowait()
-            except queue.Empty:
-                break
-            self._append_log(msg)
-        while True:
-            try:
-                func = self.ui_queue.get_nowait()
-            except queue.Empty:
-                break
+    def _drain_queues(self) -> None:
+        for message in _drain(self._log_queue):
+            self._log(message)
+        for func in _drain(self._ui_queue):
             func()
-        self.root.after(80, self._poll_log_queue)
+        self.root.after(QUEUE_POLL_MS, self._drain_queues)
 
-    def _append_log(self, text: str) -> None:
+    def _log(self, message: str) -> None:
+        """Append ``message`` to the log pane (main thread only)."""
         self.log_text.config(state=tk.NORMAL)
-        self.log_text.insert(tk.END, text + "\n")
+        self.log_text.insert(tk.END, message + "\n")
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 
-    def _log(self, text: str) -> None:
-        """Log from the main thread."""
-        self._append_log(text)
+
+def _empty_grid(columns: int) -> Grid:
+    return [[0] * columns for _ in range(DAYS_PER_WEEK)]
 
 
-def _cell_color(level: int) -> str:
-    """Canvas colour for an intensity level (0 = empty, levels above 4 use the darkest)."""
-    if level <= 0:
-        return EMPTY_COLOR
-    return LEVEL_COLORS[min(level, MAX_LEVEL)]
+def _drain[T](items: queue.Queue[T]) -> list[T]:
+    """Remove and return everything currently in ``items``."""
+    drained: list[T] = []
+    while True:
+        try:
+            drained.append(items.get_nowait())
+        except queue.Empty:
+            return drained
 
 
 def _active_branch(repo: git.Repo) -> str | None:
-    """Current branch name, or None when HEAD is detached."""
+    """Return the current branch name, or None when HEAD is detached."""
     return None if repo.head.is_detached else repo.active_branch.name
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 
 def main() -> None:
