@@ -1,5 +1,12 @@
-"""Smoke tests for the Tk editor (skipped when no display is available, e.g. in CI)."""
+"""Smoke tests for the Tk editor.
 
+pytest-xvfb (dev dependency) starts a virtual X display automatically where Xvfb is
+installed (Linux CI), so these run on CI. Elsewhere without a display they are skipped,
+but on CI (``CI`` env var set) a missing display is a hard failure, so they can't
+silently stop running.
+"""
+
+import os
 import tkinter as tk
 from types import SimpleNamespace
 
@@ -13,6 +20,8 @@ def app(tmp_path, monkeypatch):
     try:
         root = tk.Tk()
     except tk.TclError:
+        if os.environ.get("CI"):
+            pytest.fail("Tk could not start on CI: the virtual display (pytest-xvfb) is missing")
         pytest.skip("no display available for Tk")
     root.withdraw()
     monkeypatch.setattr(gui, "DATA_DIR", tmp_path / "data")

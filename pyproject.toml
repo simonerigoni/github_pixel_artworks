@@ -17,6 +17,7 @@ Repository = "https://github.com/simonerigoni/github_pixel_artworks"
 dev = [
     "pyright>=1.1.408",
     "pytest-cov>=7.1.0",
+    "pytest-xvfb>=3.1.1",
     "ruff>=0.14.6",
 ]
 

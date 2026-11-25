@@ -44,7 +44,7 @@ It is also possible to run manully the individual tools:
 
 ## Testing
 
-Tests are implemented using `pytest` and coverage is tracked with `pytest-cov`. The detailed coverage report is genarated by the pre-commit hook and it is available in [COVERAGE.md](COVERAGE.md) file.
+Tests are implemented using `pytest` and coverage is tracked with `pytest-cov`. The GUI tests need a display: on Linux (and CI) `pytest-xvfb` starts a virtual one automatically when `Xvfb` is installed; elsewhere they run on your desktop or are skipped. The detailed coverage report is genarated by the pre-commit hook and it is available in [COVERAGE.md](COVERAGE.md) file.
 
 It is also possible to run manully the individual tests:
 
