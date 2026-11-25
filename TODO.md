@@ -8,7 +8,7 @@ Overview of the status of the tasks of this project.
 
 ### To do
 
-- [ ] None
+- [ ] Add tests
 
 ### In Progress
 
@@ -19,4 +19,3 @@ Overview of the status of the tasks of this project.
 - [x] Project initialization
 - [x] Use uv and pre-commit
 - [x] Add CI
-- [x] Add tests
