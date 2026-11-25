@@ -8,7 +8,7 @@ Overview of the status of the tasks of this project.
 
 ### To do
 
-- [ ] Add real screenshots to the README (the local ones are placeholders)
+- [ ] Add a screenshot of real pixel art on a GitHub profile contribution graph
 
 ### In Progress
 
