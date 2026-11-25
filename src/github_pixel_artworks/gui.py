@@ -10,9 +10,9 @@ Interactive editor for creating 7-row pixel art grids (for GitHub contribution g
 - Save .txt files to the data/ folder (compatible with the CLI).
 - "Generate Art" button: creates the backdated commits for the selected year (in-place).
   The "Use dedicated art branch" checkbox (on by default) tells the core to auto-manage
-  stashing + checkout -B the branch. The suggested branch name is "artworks-<year>"
-  (e.g. artworks-2016) so each year's art lives on its own branch.
-- "Push to GitHub" button: pushes the current (art) branch after generation.
+  stashing + switching to the branch (and back afterwards). The suggested branch name
+  is "artworks-<year>" (e.g. artworks-2016) so each year's art lives on its own branch.
+- "Push to GitHub" button: pushes the branch that received the art commits.
 
 Launch:
     python gui.py
@@ -23,13 +23,18 @@ Launch:
 import queue
 import threading
 import tkinter as tk
+from collections.abc import Callable
+from datetime import date, timedelta
 from pathlib import Path
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+import git
+
 from .core import (
     MAX_WEEKS,
     apply_drawing,
+    drawing_path,
     get_first_sunday_of_year,
     load_grid,
     save_grid,
@@ -55,7 +60,9 @@ MAX_COLS = MAX_WEEKS
 
 
 class PixelArtGUI:
-    def __init__(self, root: tk.Tk):
+    """Tkinter editor: draw a 7-row grid, save it to data/, generate and push the art."""
+
+    def __init__(self, root: tk.Tk) -> None:
         self.root = root
         root.title("GitHub Pixel Artworks - Drawer")
         root.geometry("900x620")
@@ -65,8 +72,18 @@ class PixelArtGUI:
         self.grid: list[list[int]] = [[0] * 10 for _ in range(7)]
         self.current_cols = 10
 
-        # For thread <-> GUI communication
+        # Value painted while dragging (set by the click that starts the stroke)
+        self._paint_value = 1
+        # Branch that received the last generated art (what "Push" pushes)
+        self._art_target_branch: str | None = None
+
+        # For thread <-> GUI communication: worker threads never touch Tk directly,
+        # they enqueue log lines and UI callbacks that the main thread drains.
         self.log_queue: queue.Queue[str] = queue.Queue()
+        self.ui_queue: queue.Queue[Callable[[], object]] = queue.Queue()
+
+        # Make sure data dir exists before listing it
+        DATA_DIR.mkdir(exist_ok=True)
 
         self._build_ui()
         self._refresh_canvas()
@@ -77,20 +94,17 @@ class PixelArtGUI:
         # Poll the log queue periodically
         self.root.after(80, self._poll_log_queue)
 
-        # Make sure data dir exists
-        DATA_DIR.mkdir(exist_ok=True)
-
     # ------------------------------------------------------------------
     # UI Construction
     # ------------------------------------------------------------------
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         # Top control bar
         top = ttk.Frame(self.root, padding=8)
         top.pack(fill=tk.X)
 
         ttk.Label(top, text="Year:").pack(side=tk.LEFT)
-        self.year_var = tk.IntVar(value=2025)
+        self.year_var = tk.IntVar(value=date.today().year)
         year_spin = ttk.Spinbox(
             top,
             from_=2010,
@@ -229,7 +243,7 @@ class PixelArtGUI:
     # Canvas / Grid drawing
     # ------------------------------------------------------------------
 
-    def _refresh_canvas(self):
+    def _refresh_canvas(self) -> None:
         self.canvas.delete("all")
         rows = 7
         cols = self.current_cols
@@ -243,31 +257,42 @@ class PixelArtGUI:
                 x1 = x0 + w
                 y1 = y0 + h
                 fill = FILLED_COLOR if self.grid[r][c] > 0 else EMPTY_COLOR
-                rect = self.canvas.create_rectangle(
-                    x0, y0, x1, y1, fill=fill, outline="#999", tags=f"cell_{r}_{c}"
+                self.canvas.create_rectangle(
+                    x0, y0, x1, y1, fill=fill, outline="#999", tags=(f"cell_{r}_{c}",)
                 )
-                # store row/col on the item for hit testing
-                self.canvas.itemconfig(rect, tags=(f"cell_{r}_{c}", str(r), str(c)))
 
         # size the canvas
         self.canvas.config(width=cols * w + 2, height=rows * h + 2)
 
-    def _on_canvas_click(self, event):
-        self._toggle_cell_at(event.x, event.y)
-
-    def _on_canvas_drag(self, event):
-        self._toggle_cell_at(event.x, event.y)
-
-    def _toggle_cell_at(self, x: int, y: int):
-        w = CELL_SIZE
-        c = x // w
-        r = y // w
+    def _cell_at(self, x: int, y: int) -> tuple[int, int] | None:
+        r, c = y // CELL_SIZE, x // CELL_SIZE
         if 0 <= r < 7 and 0 <= c < self.current_cols:
-            self.grid[r][c] = 1 if self.grid[r][c] == 0 else 0
-            self._refresh_canvas()
-            self._update_preview_label()
+            return r, c
+        return None
 
-    def _change_cols(self, delta: int):
+    def _on_canvas_click(self, event: tk.Event) -> None:
+        # A click toggles its cell and sets the value the rest of the drag paints.
+        cell = self._cell_at(event.x, event.y)
+        if cell is None:
+            return
+        r, c = cell
+        self._paint_value = 0 if self.grid[r][c] else 1
+        self._set_cell(r, c, self._paint_value)
+
+    def _on_canvas_drag(self, event: tk.Event) -> None:
+        # Dragging paints (instead of toggling on every motion event, which flickered).
+        cell = self._cell_at(event.x, event.y)
+        if cell is not None:
+            self._set_cell(*cell, self._paint_value)
+
+    def _set_cell(self, r: int, c: int, value: int) -> None:
+        if self.grid[r][c] == value:
+            return
+        self.grid[r][c] = value
+        self._refresh_canvas()
+        self._update_preview_label()
+
+    def _change_cols(self, delta: int) -> None:
         new_cols = max(MIN_COLS, min(MAX_COLS, self.current_cols + delta))
         if new_cols == self.current_cols:
             return
@@ -286,12 +311,12 @@ class PixelArtGUI:
         self._refresh_canvas()
         self._update_preview_label()
 
-    def _clear_grid(self):
+    def _clear_grid(self) -> None:
         self.grid = [[0] * self.current_cols for _ in range(7)]
         self._refresh_canvas()
         self._update_preview_label()
 
-    def _new_grid(self):
+    def _new_grid(self) -> None:
         self.current_cols = 10
         self.grid = [[0] * self.current_cols for _ in range(7)]
         self.filename_var.set("new_drawing")
@@ -302,50 +327,49 @@ class PixelArtGUI:
     # Preview / params
     # ------------------------------------------------------------------
 
-    def _on_params_changed(self):
+    def _on_params_changed(self) -> None:
         self._update_preview_label()
         self._update_art_branch_suggestion()
 
-    def _update_preview_label(self):
+    def _update_preview_label(self) -> None:
         try:
             year = self.year_var.get()
             offset = self.offset_var.get()
-            start = get_first_sunday_of_year(year) + __import__("datetime").timedelta(weeks=offset)
+            start = get_first_sunday_of_year(year) + timedelta(weeks=offset)
             w = self.current_cols
-            end = start + __import__("datetime").timedelta(weeks=w - 1, days=6)
+            end = start + timedelta(weeks=w - 1, days=6)
             total = sum(sum(row) for row in self.grid)  # multiplier=1 for preview
             self.preview_label.config(
                 text=f"Year {year} +{offset}w → starts {start.date()} (Sun), ends {end.date()}, ~{total} commits"
             )
-        except Exception:
+        except tk.TclError, ValueError, OverflowError:
             self.preview_label.config(text="Invalid year/offset")
 
-    def _update_art_branch_suggestion(self):
+    def _update_art_branch_suggestion(self) -> None:
         """Keep the art branch name in sync with the selected year (user preference:
         use year-specific branches like 'artworks-2016' instead of a single 'artworks').
         Only auto-updates if the field still looks like a generated suggestion.
         """
         try:
             year = self.year_var.get()
-            suggested = f"artworks-{year}"
-            current = self.art_branch_var.get().strip()
-            if not current or current.startswith("artworks-") or current == "artworks":
-                self.art_branch_var.set(suggested)
-        except Exception:
-            pass
+        except tk.TclError:  # spinbox temporarily holds a non-number
+            return
+        current = self.art_branch_var.get().strip()
+        if not current or current.startswith("artworks-") or current == "artworks":
+            self.art_branch_var.set(f"artworks-{year}")
 
     # ------------------------------------------------------------------
     # Data (drawings) list & load/save
     # ------------------------------------------------------------------
 
-    def _populate_drawings_list(self):
+    def _populate_drawings_list(self) -> None:
         self.drawings_list.delete(0, tk.END)
         if not DATA_DIR.exists():
             return
         for p in sorted(DATA_DIR.glob("*.txt")):
             self.drawings_list.insert(tk.END, p.name)
 
-    def _load_selected(self):
+    def _load_selected(self) -> None:
         sel = self.drawings_list.curselection()
         if not sel:
             return
@@ -353,6 +377,11 @@ class PixelArtGUI:
         path = DATA_DIR / name
         try:
             loaded = load_grid(path)
+            if any(v > 1 for row in loaded for v in row):
+                self._log(
+                    f"Note: {name} uses intensity levels; the editor shows them as on/off "
+                    "and saving will store them as level 1."
+                )
             self.grid = [[1 if v > 0 else 0 for v in row] for row in loaded]
             self.current_cols = len(self.grid[0]) if self.grid else 10
             self.filename_var.set(Path(name).stem)
@@ -362,24 +391,22 @@ class PixelArtGUI:
         except Exception as e:
             messagebox.showerror("Load error", str(e))
 
-    def _delete_selected(self):
+    def _delete_selected(self) -> None:
         sel = self.drawings_list.curselection()
         if not sel:
             return
         name = self.drawings_list.get(sel[0])
         if not messagebox.askyesno("Delete", f"Delete {name}?"):
             return
-        (DATA_DIR / name).unlink(missing_ok=True)
+        try:
+            drawing_path(DATA_DIR, name).unlink(missing_ok=True)
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Delete error", str(e))
         self._populate_drawings_list()
 
-    def _save_drawing(self):
-        name = self.filename_var.get().strip()
-        if not name:
-            name = "untitled"
-        if not name.endswith(".txt"):
-            name += ".txt"
-        path = DATA_DIR / name
+    def _save_drawing(self) -> None:
         try:
+            path = drawing_path(DATA_DIR, self.filename_var.get())
             save_grid(path, self.grid)
             self._log(f"Saved to {path}")
             self._populate_drawings_list()
@@ -390,7 +417,7 @@ class PixelArtGUI:
     # Generate + Push (the important buttons)
     # ------------------------------------------------------------------
 
-    def _on_generate_clicked(self):
+    def _on_generate_clicked(self) -> None:
         if not messagebox.askyesno(
             "Generate Art",
             "This will create backdated commits in the current repository\n"
@@ -402,11 +429,19 @@ class PixelArtGUI:
         self.push_btn.config(state=tk.DISABLED)
         self.status_var.set("Generating...")
 
-        year = self.year_var.get()
-        offset = self.offset_var.get()
+        try:
+            year = self.year_var.get()
+            offset = self.offset_var.get()
+        except tk.TclError:
+            messagebox.showerror("Generate Art", "Year and offset must be whole numbers.")
+            self.generate_btn.config(state=tk.NORMAL)
+            self.status_var.set("Ready")
+            return
         art_branch = self.art_branch_var.get().strip() if self.use_art_branch_var.get() else None
+        # Read Tk variables here: worker threads must not touch Tk objects.
+        force = self.force_var.get()
 
-        def worker():
+        def worker() -> None:
             try:
                 n = apply_drawing(
                     grid=self.grid,
@@ -414,44 +449,42 @@ class PixelArtGUI:
                     offset_weeks=offset,
                     target_repo=".",
                     in_place=True,
-                    force=self.force_var.get(),
+                    force=force,
                     art_branch=art_branch,
                     log=self._queue_log,
                 )
-                if art_branch:
-                    self._queue_log(
-                        f"\n=== SUCCESS: {n} commits created for year {year} on branch {art_branch} ==="
-                    )
-                else:
-                    self._queue_log(f"\n=== SUCCESS: {n} commits created for year {year} ===")
-                self.root.after(0, lambda: self.push_btn.config(state=tk.NORMAL))
-            except Exception as e:
+                target = art_branch or _active_branch(git.Repo("."))
+                self._call_in_ui(lambda: setattr(self, "_art_target_branch", target))
+                where = f" on branch {target}" if target else ""
+                self._queue_log(f"\n=== SUCCESS: {n} commits created for year {year}{where} ===")
+                if target:
+                    self._call_in_ui(lambda: self.push_btn.config(state=tk.NORMAL))
+            except Exception as e:  # show any failure in the log instead of killing the thread
                 self._queue_log(f"\nError: {e}")
             finally:
-                self.root.after(0, lambda: self.generate_btn.config(state=tk.NORMAL))
-                self.root.after(0, lambda: self.status_var.set("Ready"))
+                self._call_in_ui(lambda: self.generate_btn.config(state=tk.NORMAL))
+                self._call_in_ui(lambda: self.status_var.set("Ready"))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_push_clicked(self):
+    def _on_push_clicked(self) -> None:
+        branch = self._art_target_branch
+        if not branch:
+            return
         self.push_btn.config(state=tk.DISABLED)
         self.status_var.set("Pushing...")
 
-        def worker():
+        def worker() -> None:
             try:
-                import git
-
-                repo = git.Repo(".")
-                branch = repo.active_branch.name if not repo.head.is_detached else "HEAD"
                 self._queue_log(f"Pushing {branch} ...")
-                repo.git.push("origin", branch)
+                git.Repo(".").git.push("origin", branch)
                 self._queue_log("Push completed successfully.")
-            except Exception as e:
+            except Exception as e:  # show any failure in the log instead of killing the thread
                 self._queue_log(f"Push error: {e}")
             finally:
-                self.root.after(0, lambda: self.status_var.set("Ready"))
+                self._call_in_ui(lambda: self.status_var.set("Ready"))
                 # Re-enable push in case user wants to retry
-                self.root.after(0, lambda: self.push_btn.config(state=tk.NORMAL))
+                self._call_in_ui(lambda: self.push_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -459,33 +492,42 @@ class PixelArtGUI:
     # Logging helpers (thread safe)
     # ------------------------------------------------------------------
 
-    def _queue_log(self, msg: str):
+    def _queue_log(self, msg: str) -> None:
         self.log_queue.put(msg)
 
-    def _poll_log_queue(self):
-        try:
-            while True:
+    def _call_in_ui(self, func: Callable[[], object]) -> None:
+        """Run ``func`` on the Tk main thread (safe to call from worker threads)."""
+        self.ui_queue.put(func)
+
+    def _poll_log_queue(self) -> None:
+        while True:
+            try:
                 msg = self.log_queue.get_nowait()
-                self._append_log(msg)
-        except queue.Empty:
-            pass
+            except queue.Empty:
+                break
+            self._append_log(msg)
+        while True:
+            try:
+                func = self.ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            func()
         self.root.after(80, self._poll_log_queue)
 
-    def _append_log(self, text: str):
+    def _append_log(self, text: str) -> None:
         self.log_text.config(state=tk.NORMAL)
         self.log_text.insert(tk.END, text + "\n")
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 
-    def _log(self, text: str):
-        # Direct log from main thread
+    def _log(self, text: str) -> None:
+        """Log from the main thread."""
         self._append_log(text)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
-    pass
+def _active_branch(repo: git.Repo) -> str | None:
+    """Current branch name, or None when HEAD is detached."""
+    return None if repo.head.is_detached else repo.active_branch.name
 
 
 # ---------------------------------------------------------------------------
@@ -493,7 +535,8 @@ class PixelArtGUI:
 # ---------------------------------------------------------------------------
 
 
-def main():
+def main() -> None:
+    """Entry point of the ``github-pixel-artworks-gui`` command."""
     root = tk.Tk()
     PixelArtGUI(root)
     root.mainloop()

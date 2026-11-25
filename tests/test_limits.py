@@ -8,6 +8,7 @@ These are the first real (non-dummy) tests exercising validation added for the
 import tempfile
 from pathlib import Path
 
+import git
 import pytest
 
 from github_pixel_artworks import MAX_WEEKS
@@ -34,7 +35,7 @@ def test_load_grid_rejects_more_than_52_weeks():
 
 def test_load_grid_accepts_exactly_52_weeks_via_real_data():
     # space_invaders.txt is the canonical 52-week example
-    p = Path("data/space_invaders.txt")
+    p = Path(__file__).resolve().parents[1] / "data" / "space_invaders.txt"
     assert p.exists(), "expected data file for boundary test"
     grid = load_grid(p)
     assert len(grid) == 7
@@ -51,46 +52,26 @@ def test_load_grid_accepts_small_widths():
         assert len(grid[0]) == 7
 
 
-def test_apply_drawing_rejects_offset_greater_than_max():
-    grid = [[0] * 5 for _ in range(7)]
+def test_apply_drawing_rejects_offset_greater_than_max(git_repo: git.Repo):
+    grid = [[1] * 5 for _ in range(7)]
     with pytest.raises(ValueError, match=str(MAX_WEEKS)):
-        # target_repo="." will never be reached; the offset check is early
         apply_drawing(
             grid=grid,
             year=2025,
             offset_weeks=MAX_WEEKS + 1,
-            target_repo=".",
+            target_repo=str(git_repo.working_tree_dir),
         )
+    assert len(list(git_repo.iter_commits())) == 1
 
 
-def test_apply_drawing_accepts_offset_exactly_max_and_negative():
-    grid = [[0] * 3 for _ in range(7)]
-    # offset=52 should pass the new check (later will fail on git repo / dirty etc.)
-    try:
-        apply_drawing(
-            grid=grid,
-            year=2025,
-            offset_weeks=MAX_WEEKS,
-            target_repo=".",  # will raise later (InvalidGitRepository or similar)
-        )
-    except ValueError as e:
-        # We must NOT have hit our offset limit
-        assert "offset_weeks" not in str(e).lower()
-        assert "exceed" not in str(e).lower()
-    except Exception:
-        # Any other exception (git, dirty tree, etc.) is fine — validation passed
-        pass
-
-    # Negative offset (CLI flexibility) must also not raise the limit error
-    try:
-        apply_drawing(
-            grid=grid,
-            year=2025,
-            offset_weeks=-3,
-            target_repo=".",
-        )
-    except ValueError as e:
-        assert "offset_weeks" not in str(e).lower()
-        assert "exceed" not in str(e).lower()
-    except Exception:
-        pass
+@pytest.mark.parametrize("offset", [MAX_WEEKS, -3])
+def test_apply_drawing_accepts_offset_exactly_max_and_negative(git_repo: git.Repo, offset: int):
+    grid = [[1], [0], [0], [0], [0], [0], [0]]
+    n = apply_drawing(
+        grid=grid,
+        year=2025,
+        offset_weeks=offset,
+        target_repo=str(git_repo.working_tree_dir),
+        log=lambda _msg: None,
+    )
+    assert n == 1
