@@ -95,15 +95,19 @@ uv run github-pixel-artworks-gui
 ```
 
 The GUI lets you:
-- Click to draw on a 7-row grid (toggle cells on/off)
+- Pick an intensity level (1 to 4, GitHub's four greens) and click or drag to paint it on the 7-row grid; clicking a cell that already has that level erases it
 - Add or remove week columns
 - Choose the target year (and optional offset weeks)
-- Load/save grids directly to the `data/` folder
+- Load/save grids directly to the `data/` folder (intensity levels are kept)
 - Preview the resulting dates and commit count
 - "Generate Art" button: creates the backdated commits (with optional dedicated branch + auto-stash)
 - "Push to GitHub" button: pushes the branch that received the art commits
 
 The GUI is built with Python's tkinter and is cross-platform.
+
+![GUI editor with data/space_invaders.txt loaded](images/gui_editor.png)
+
+![GUI editor painting data/heart.txt with intensity levels 1 to 4](images/gui_levels.png)
 
 ## Results
 
@@ -112,6 +116,11 @@ The core of the tool lives in `src/github_pixel_artworks/core.py` (especially `a
 When you run the CLI or GUI with a grid + year:
 
 - The 7-row grid is interpreted as weeks (columns) × days (rows, Sunday at top).
+
+![How data/heart.txt maps onto contribution days for 2026](images/grid_diagram.svg)
+
+  The diagram is generated from the package's own date logic with `uv run python scripts/render_grid_diagram.py`.
+
 - Dates are calculated starting from the first Sunday of the target year (plus any `--offset-weeks`).
 - For each "on" pixel, one or more empty commits are created with the corresponding `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE`, at 12:00 UTC so the pixel lands on the right square whatever your local timezone (GitHub groups contributions by UTC day).
 - Higher intensity values (2, 3, 4+) create multiple commits on that day to produce darker green squares.

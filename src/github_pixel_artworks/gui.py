@@ -4,7 +4,8 @@ github-pixel-artworks GUI
 
 Interactive editor for creating 7-row pixel art grids (for GitHub contribution graphs).
 
-- Click cells to toggle filled/empty.
+- Pick an intensity level (1..4, GitHub's four greens) and click/drag to paint it;
+  clicking a cell that already has the selected level erases it.
 - Add/remove week columns.
 - Select year (auto positions to first Sunday of the year).
 - Save .txt files to the data/ folder (compatible with the CLI).
@@ -47,8 +48,13 @@ from .core import (
 DATA_DIR = Path("data")
 CELL_SIZE = 18
 EMPTY_COLOR = "#ebedf0"
-FILLED_COLOR = "#40c463"  # GitHub-like green for level 1
+# GitHub's contribution greens for levels 1..4 (higher levels are shown as 4)
+LEVEL_COLORS = {1: "#9be9a8", 2: "#40c463", 3: "#30a14e", 4: "#216e39"}
+MAX_LEVEL = max(LEVEL_COLORS)
 GRID_BG = "#f0f0f0"
+
+DRAWINGS_PANE_WIDTH = 170
+EDITOR_PANE_PADDING = 24
 
 MIN_COLS = 3
 MAX_COLS = MAX_WEEKS
@@ -65,15 +71,17 @@ class PixelArtGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         root.title("GitHub Pixel Artworks - Drawer")
-        root.geometry("900x620")
+        root.geometry("1500x600")
         root.minsize(700, 500)
 
-        # Internal state: 7 rows x N cols, values 0 or 1 (for v1)
+        # Internal state: 7 rows x N cols, values are intensity levels (0 = empty)
         self.grid: list[list[int]] = [[0] * 10 for _ in range(7)]
         self.current_cols = 10
 
         # Value painted while dragging (set by the click that starts the stroke)
         self._paint_value = 1
+        # Intensity level the next click paints (1..MAX_LEVEL)
+        self.level_var = tk.IntVar(value=1)
         # Branch that received the last generated art (what "Push" pushes)
         self._art_target_branch: str | None = None
 
@@ -86,6 +94,7 @@ class PixelArtGUI:
         DATA_DIR.mkdir(exist_ok=True)
 
         self._build_ui()
+        self._size_panes()
         self._refresh_canvas()
         self._populate_drawings_list()
         self._update_preview_label()
@@ -134,9 +143,27 @@ class PixelArtGUI:
         )
         ttk.Button(top, text="Clear", command=self._clear_grid).pack(side=tk.LEFT, padx=4)
 
+        ttk.Label(top, text="Level:").pack(side=tk.LEFT, padx=(12, 2))
+        for level, color in LEVEL_COLORS.items():
+            tk.Radiobutton(
+                top,
+                text=str(level),
+                variable=self.level_var,
+                value=level,
+                indicatoron=False,
+                width=2,
+                bg=color,
+                activebackground=color,
+                selectcolor=color,
+                fg="white" if level >= 3 else "black",
+                offrelief=tk.FLAT,
+                relief=tk.RAISED,
+            ).pack(side=tk.LEFT, padx=1)
+
         # Main area: left = drawings list, center = editor, right = actions
         main_pane = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_pane.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        self._main_pane = main_pane
 
         # Left: saved drawings
         left_frame = ttk.LabelFrame(main_pane, text="Saved in data/", padding=6)
@@ -165,11 +192,15 @@ class PixelArtGUI:
         self.canvas = tk.Canvas(
             center, bg=GRID_BG, highlightthickness=1, highlightbackground="#888"
         )
-        self.canvas.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        # Wide artworks (up to 52 weeks) scroll horizontally instead of being cut off.
+        x_scroll = ttk.Scrollbar(center, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        self.canvas.configure(xscrollcommand=x_scroll.set)
+        self.canvas.pack(fill=tk.BOTH, expand=True, padx=4, pady=(4, 0))
+        x_scroll.pack(fill=tk.X, padx=4)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
 
-        self.preview_label = ttk.Label(center, text="", font=("TkDefaultFont", 9))
+        self.preview_label = ttk.Label(center, text="", font=("TkDefaultFont", 9), justify=tk.LEFT)
         self.preview_label.pack(anchor=tk.W, padx=4)
 
         # Right: actions + log
@@ -193,7 +224,7 @@ class PixelArtGUI:
         self.use_art_branch_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             action_frame,
-            text="Use dedicated art branch (avoids dirty errors)",
+            text="Use dedicated art branch",
             variable=self.use_art_branch_var,
         ).pack(anchor=tk.W)
 
@@ -220,7 +251,7 @@ class PixelArtGUI:
         self.force_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             action_frame,
-            text="Force (ignore dirty tree warning — advanced)",
+            text="Force (allow a dirty working tree)",
             variable=self.force_var,
         ).pack(anchor=tk.W, pady=(4, 0))
 
@@ -239,6 +270,12 @@ class PixelArtGUI:
             fill=tk.X, side=tk.BOTTOM
         )
 
+    def _size_panes(self) -> None:
+        """Open with the editor pane wide enough for a full year (MAX_WEEKS columns)."""
+        self.root.update_idletasks()
+        self._main_pane.sashpos(0, DRAWINGS_PANE_WIDTH)
+        self._main_pane.sashpos(1, DRAWINGS_PANE_WIDTH + MAX_COLS * CELL_SIZE + EDITOR_PANE_PADDING)
+
     # ------------------------------------------------------------------
     # Canvas / Grid drawing
     # ------------------------------------------------------------------
@@ -256,13 +293,15 @@ class PixelArtGUI:
                 y0 = r * h
                 x1 = x0 + w
                 y1 = y0 + h
-                fill = FILLED_COLOR if self.grid[r][c] > 0 else EMPTY_COLOR
+                fill = _cell_color(self.grid[r][c])
                 self.canvas.create_rectangle(
                     x0, y0, x1, y1, fill=fill, outline="#999", tags=(f"cell_{r}_{c}",)
                 )
 
         # size the canvas
-        self.canvas.config(width=cols * w + 2, height=rows * h + 2)
+        self.canvas.config(
+            width=cols * w + 2, height=rows * h + 2, scrollregion=(0, 0, cols * w, rows * h)
+        )
 
     def _cell_at(self, x: int, y: int) -> tuple[int, int] | None:
         r, c = y // CELL_SIZE, x // CELL_SIZE
@@ -271,17 +310,19 @@ class PixelArtGUI:
         return None
 
     def _on_canvas_click(self, event: tk.Event) -> None:
-        # A click toggles its cell and sets the value the rest of the drag paints.
-        cell = self._cell_at(event.x, event.y)
+        # A click paints the selected level (or erases a cell that already has it)
+        # and sets the value the rest of the drag paints.
+        cell = self._cell_at(int(self.canvas.canvasx(event.x)), int(self.canvas.canvasy(event.y)))
         if cell is None:
             return
         r, c = cell
-        self._paint_value = 0 if self.grid[r][c] else 1
+        level = self.level_var.get()
+        self._paint_value = 0 if self.grid[r][c] == level else level
         self._set_cell(r, c, self._paint_value)
 
     def _on_canvas_drag(self, event: tk.Event) -> None:
         # Dragging paints (instead of toggling on every motion event, which flickered).
-        cell = self._cell_at(event.x, event.y)
+        cell = self._cell_at(int(self.canvas.canvasx(event.x)), int(self.canvas.canvasy(event.y)))
         if cell is not None:
             self._set_cell(*cell, self._paint_value)
 
@@ -340,7 +381,10 @@ class PixelArtGUI:
             end = start + timedelta(weeks=w - 1, days=6)
             total = sum(sum(row) for row in self.grid)  # multiplier=1 for preview
             self.preview_label.config(
-                text=f"Year {year} +{offset}w → starts {start.date()} (Sun), ends {end.date()}, ~{total} commits"
+                text=(
+                    f"Year {year}, offset {offset} weeks\n"
+                    f"{start.date()} (Sun) to {end.date()} (Sat), {total} commits"
+                )
             )
         except tk.TclError, ValueError, OverflowError:
             self.preview_label.config(text="Invalid year/offset")
@@ -376,13 +420,7 @@ class PixelArtGUI:
         name = self.drawings_list.get(sel[0])
         path = DATA_DIR / name
         try:
-            loaded = load_grid(path)
-            if any(v > 1 for row in loaded for v in row):
-                self._log(
-                    f"Note: {name} uses intensity levels; the editor shows them as on/off "
-                    "and saving will store them as level 1."
-                )
-            self.grid = [[1 if v > 0 else 0 for v in row] for row in loaded]
+            self.grid = load_grid(path)
             self.current_cols = len(self.grid[0]) if self.grid else 10
             self.filename_var.set(Path(name).stem)
             self._refresh_canvas()
@@ -523,6 +561,13 @@ class PixelArtGUI:
     def _log(self, text: str) -> None:
         """Log from the main thread."""
         self._append_log(text)
+
+
+def _cell_color(level: int) -> str:
+    """Canvas colour for an intensity level (0 = empty, levels above 4 use the darkest)."""
+    if level <= 0:
+        return EMPTY_COLOR
+    return LEVEL_COLORS[min(level, MAX_LEVEL)]
 
 
 def _active_branch(repo: git.Repo) -> str | None:

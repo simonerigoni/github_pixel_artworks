@@ -85,15 +85,25 @@ def _cell_level(char: str) -> int:
 
 
 def grid_to_text(grid: list[list[int]]) -> str:
-    """Convert internal grid (0/1+) back to a simple text representation using
-    ' ' for empty and '*' for filled (compatible with load_grid and legacy files).
-    Higher levels are collapsed to '*' for the basic editor case.
+    """Convert an internal grid back to the text format read by load_grid.
+
+    Lossless for levels 0..9: ' ' is empty, '*' is level 1 (so level-1 art stays
+    compatible with the legacy files) and levels 2..9 are written as digits.
+    Values above 9 are clamped to 9.
     """
     lines = []
     for row in grid:
-        line = "".join("*" if cell > 0 else " " for cell in row)
-        lines.append(line)
+        lines.append("".join(_cell_char(cell) for cell in row))
     return "\n".join(lines) + "\n"
+
+
+def _cell_char(level: int) -> str:
+    """Inverse of _cell_level for the canonical characters."""
+    if level <= 0:
+        return " "
+    if level == 1:
+        return "*"
+    return str(min(level, 9))
 
 
 def save_grid(path: Path | str, grid: list[list[int]]) -> None:
