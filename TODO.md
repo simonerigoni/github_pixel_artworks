@@ -8,7 +8,7 @@ Overview of the status of the tasks of this project.
 
 ### To do
 
-- [ ] Add tests
+- [ ] Add real screenshots to the README (the local ones are placeholders)
 
 ### In Progress
 
@@ -19,3 +19,5 @@ Overview of the status of the tasks of this project.
 - [x] Project initialization
 - [x] Use uv and pre-commit
 - [x] Add CI
+- [x] Add tests
+- [x] Switch license to GPL-3.0
