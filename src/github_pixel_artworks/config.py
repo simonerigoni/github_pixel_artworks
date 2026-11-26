@@ -433,7 +433,15 @@ EXIT_BAD_ARGUMENT = 5
 
 # GUI -------------------------------------------------------------------------
 
-CELL_SIZE = 18
+CELL_SIZE = 64
+"""Default side of one grid cell, in pixels.
+
+At WINDOW_SIZE this fills most of the editor canvas height (seven rows). A
+53-week year is wider than that canvas, so the grid scrolls horizontally. The
+toolbar cell-size control zooms in or out between MIN_CELL_SIZE and MAX_CELL_SIZE.
+"""
+MIN_CELL_SIZE = 12
+MAX_CELL_SIZE = 80
 GRID_BACKGROUND = "#f0f0f0"
 CELL_OUTLINE = "#999"
 CANVAS_BORDER = "#888"

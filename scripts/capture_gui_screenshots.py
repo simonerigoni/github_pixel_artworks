@@ -21,7 +21,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from github_pixel_artworks.config import CELL_SIZE, WINDOW_SIZE
+from github_pixel_artworks.config import WINDOW_SIZE
 from github_pixel_artworks.gui import PixelArtGUI
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -110,7 +110,7 @@ def select_drawing(app: PixelArtGUI, name: str) -> None:
 
 
 def _click(app: PixelArtGUI, row: int, column: int) -> None:
-    event = SimpleNamespace(x=column * CELL_SIZE + 1, y=row * CELL_SIZE + 1)
+    event = SimpleNamespace(x=column * app.cell_size + 1, y=row * app.cell_size + 1)
     app._on_canvas_click(cast(tk.Event, event))
 
 

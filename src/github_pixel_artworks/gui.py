@@ -41,8 +41,10 @@ from .config import (
     HINT_PADDING,
     LEVEL_COLORS,
     LOG_LINES,
+    MAX_CELL_SIZE,
     MAX_WEEKS,
     MAX_YEAR,
+    MIN_CELL_SIZE,
     MIN_COLUMNS,
     MIN_YEAR,
     PATTERN_NAMES,
@@ -85,6 +87,7 @@ class PixelArtGUI:
         self._build_panes()
         self._build_status_bar()
 
+        self.cell_size_var.trace_add("write", lambda *_args: self._redraw())
         self._redraw()
         self._populate_drawings_list()
         self._suggest_art_branch()
@@ -95,6 +98,11 @@ class PixelArtGUI:
     def columns(self) -> int:
         """Number of week columns in the grid."""
         return len(self.grid[0])
+
+    @property
+    def cell_size(self) -> int:
+        """Side of one cell, in pixels, after fitting seven rows on the canvas."""
+        return self._display_cell_size()
 
     # Layout ----------------------------------------------------------------
 
@@ -132,8 +140,26 @@ class PixelArtGUI:
                 relief=tk.RAISED,
             ).pack(side=tk.LEFT, padx=1)
 
+        self.cell_size_var = tk.IntVar(value=CELL_SIZE)
+        self._add_spinbox(
+            bar,
+            "Cell size:",
+            self.cell_size_var,
+            MIN_CELL_SIZE,
+            MAX_CELL_SIZE,
+            width=3,
+            command=self._redraw,
+        )
+
     def _add_spinbox(
-        self, parent: ttk.Frame, label: str, variable: tk.IntVar, low: int, high: int, width: int
+        self,
+        parent: ttk.Frame,
+        label: str,
+        variable: tk.IntVar,
+        low: int,
+        high: int,
+        width: int,
+        command: Callable[[], object] | None = None,
     ) -> None:
         ttk.Label(parent, text=label).pack(side=tk.LEFT)
         ttk.Spinbox(
@@ -142,7 +168,7 @@ class PixelArtGUI:
             to=high,
             textvariable=variable,
             width=width,
-            command=self._on_schedule_changed,
+            command=command or self._on_schedule_changed,
         ).pack(side=tk.LEFT, padx=(2, 12))
 
     def _build_pattern_bar(self, parent: ttk.Frame) -> ttk.Frame:
@@ -250,6 +276,7 @@ class PixelArtGUI:
         scrollbar.pack(fill=tk.X, padx=4)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
 
         self.schedule_label = ttk.Label(pane, font=("TkDefaultFont", 9), justify=tk.LEFT)
         self.schedule_label.pack(anchor=tk.W, padx=4)
@@ -380,29 +407,56 @@ class PixelArtGUI:
 
     # Grid editing ----------------------------------------------------------
 
+    def _on_canvas_configure(self, _event: tk.Event) -> None:
+        """Redraw when a resize changes the cell size that still fits seven rows."""
+        if self.cell_size != getattr(self, "_drawn_cell_size", None):
+            self._redraw()
+
+    def _chosen_cell_size(self) -> int:
+        """Return the cell size chosen in the toolbar, clamped to the allowed range."""
+        try:
+            value = int(self.cell_size_var.get())
+        except tk.TclError, TypeError, ValueError:
+            value = CELL_SIZE
+        return max(MIN_CELL_SIZE, min(MAX_CELL_SIZE, value))
+
+    def _display_cell_size(self) -> int:
+        """Return the chosen size, shrunk if needed so seven rows fit on the canvas."""
+        chosen = self._chosen_cell_size()
+        height = self.canvas.winfo_height() if hasattr(self, "canvas") else 0
+        if height > 1:
+            fitted = max(MIN_CELL_SIZE, (height - 2) // DAYS_PER_WEEK)
+            return min(chosen, fitted)
+        return chosen
+
     def _redraw(self) -> None:
         """Repaint every cell and refresh the schedule summary."""
+        if not hasattr(self, "canvas"):
+            return
+        size = self.cell_size
+        self._drawn_cell_size = size
         self.canvas.delete("all")
         for row in range(DAYS_PER_WEEK):
             for column in range(self.columns):
-                x, y = column * CELL_SIZE, row * CELL_SIZE
+                x, y = column * size, row * size
                 self.canvas.create_rectangle(
                     x,
                     y,
-                    x + CELL_SIZE,
-                    y + CELL_SIZE,
+                    x + size,
+                    y + size,
                     fill=level_color(self.grid[row][column]),
                     outline=CELL_OUTLINE,
                     tags=(f"cell_{row}_{column}",),
                 )
-        width, height = self.columns * CELL_SIZE, DAYS_PER_WEEK * CELL_SIZE
-        self.canvas.config(height=height + 2, scrollregion=(0, 0, width, height))
+        width, height = self.columns * size, DAYS_PER_WEEK * size
+        self.canvas.config(scrollregion=(0, 0, width, height))
         self._update_schedule_label()
 
     def _cell_at(self, event: tk.Event) -> tuple[int, int] | None:
         """Return the (row, column) under a mouse event, or None outside the grid."""
-        row = int(self.canvas.canvasy(event.y)) // CELL_SIZE
-        column = int(self.canvas.canvasx(event.x)) // CELL_SIZE
+        size = self.cell_size
+        row = int(self.canvas.canvasy(event.y)) // size
+        column = int(self.canvas.canvasx(event.x)) // size
         if 0 <= row < DAYS_PER_WEEK and 0 <= column < self.columns:
             return row, column
         return None
