@@ -11,9 +11,11 @@ from .config import (
     LEVEL_FOUR_CHARS,
     LEVEL_ONE_CHARS,
     MAX_FILE_LEVEL,
-    MAX_WEEKS,
     TOP_LEVEL,
 )
+
+# Re-exported: this was defined here before config.py.
+from .config import MAX_WEEKS as MAX_WEEKS
 
 type Grid = list[list[int]]
 """Seven rows (Sunday first) of intensity levels, one column per week. 0 means empty."""

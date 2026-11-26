@@ -10,10 +10,11 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
 
 - `src/github_pixel_artworks/` (src layout; never add modules at the root)
   - `__init__.py`: version and the public API (`__all__`)
-  - `config.py`: every named constant (levels, palette, year range, GitHub URLs and regexes, commit marker, exit codes, GUI and diagram layout), grouped by topic
+  - `config.py`: every named constant (levels, palette, year range, GitHub URLs and regexes, commit marker, exit codes, GUI and diagram layout), grouped by topic; font, tetromino and sprite tables are in `pattern_data.py` and re-exported from here
+  - `pattern_data.py`: font glyphs, tetrominoes and sprite bitmaps used by the pattern generators
   - `artwork.py`: the 7-row file format, intensity levels, colours, drawing paths
   - `dates.py`: Sunday alignment, the auto-align window, pixel timestamps
-  - `art_repo.py`: opening the target repository or cloning a URL into `target_cloned_repo/<repo>` at the project root (`TARGET_CLONE_DIR_NAME`, found from the package location), leftover-clone reuse, its default branch, unpushed-commit check, pushing, and `remove_tree` (handles read-only `.git` files on Windows)
+  - `art_repo.py`: opening the target repository or cloning a URL into `target_cloned_repo/<repo>` at the project root (`TARGET_CLONE_DIR_NAME`, found from the package location), leftover-clone reuse, its default branch, unpushed-commit check, pushing, and `remove_tree` (handles read-only `.git` files on Windows). Clone folder names are rejected if they would escape the parent folder; credentials in a clone URL are stripped from log and error text.
   - `identity.py`: `git_config` (effective settings in a folder) and `resolve_identity`: `GIT_AUTHOR_*`, then the target's local config, then the settings where the tool runs; passed to `commit-tree` as author and committer env
   - `github.py`: username validation and detection (github.user, no-reply email, login-shaped user.name, unauthenticated commit search by email, optional gh), the contribution calendar, remote URLs, email and fork checks
   - `patterns.py`: named grid generators (`generate`, registry `GENERATORS`) used as an alternative to a drawing file
@@ -43,6 +44,8 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
 - Never delete untracked or ignored files in the target repository.
 - The art-branch flow always restores the original branch and the stash (`try/finally`), and reuses an existing art branch instead of resetting it.
 - Branch names are validated with `git check-ref-format` and may not start with `-`.
+- Never log or display a clone URL's userinfo (tokens, passwords). `redact_remote_url` / `redact_urls_in` strip them from messages.
+- A URL target is cloned into `target_cloned_repo/<repo>` only: `repo_folder_name` rejects `.`, `..`, empty names and path separators.
 - GUI worker threads never touch Tk; they use `_queue_log` / `_call_in_ui`.
 - Art commits are empty: never write files, never commit the index (staged work stays staged). Earlier art commits (message prefix `pixel art `) count towards each pixel, so re-runs are idempotent.
 - By default commit only on the target repository's default branch, and refuse this project's checkout (`is_tool_checkout` checks only the target root, so a clone in `target_cloned_repo/` is not refused). The art branch is advanced and always warns that it does not count until it is the default.
