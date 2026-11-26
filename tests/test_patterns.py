@@ -13,6 +13,8 @@ from github_pixel_artworks.config import (
     PATTERN_OVERFLOW_TRUNCATE,
     PATTERN_RANDOM,
     PATTERN_TETRIS,
+    PATTERN_TETRIS_MAX_HEIGHT,
+    PATTERN_TETRIS_MIN_HEIGHT,
     PATTERN_TEXT,
     PATTERN_WAVE,
     TETROMINOES,
@@ -102,6 +104,42 @@ class TestTetris:
         assert _drop_piece(grid, Random(0))
         assert any(grid[-1])  # gravity is toward the last row (Saturday)
 
+    def test_each_piece_is_one_shade_and_neighbours_differ(self) -> None:
+        for seed in (1, 11, 42, 99):
+            grid = generate(PATTERN_TETRIS, width=20, seed=seed)
+            pieces = _same_shade_groups(grid)
+            assert pieces
+            for cells, level in pieces:
+                assert len(cells) == 4
+                assert all(grid[r][c] == level for r, c in cells)
+                assert _is_tetromino(cells)
+            cells_to_level = {cell: level for cells, level in pieces for cell in cells}
+            for (row, column), level in cells_to_level.items():
+                for nrow, ncol in ((row - 1, column), (row, column - 1)):
+                    neighbour = cells_to_level.get((nrow, ncol))
+                    if neighbour is not None and (nrow, ncol) not in _group_of(
+                        pieces, (row, column)
+                    ):
+                        assert neighbour != level
+
+    def test_the_stack_is_not_a_full_board(self) -> None:
+        grid = generate(PATTERN_TETRIS, width=20, seed=11)
+        cells = DAYS_PER_WEEK * 20
+        filled = sum(1 for row in grid for level in row if level)
+        assert 0 < filled < cells
+        heights = _grounded_heights(grid)
+        assert all(height <= PATTERN_TETRIS_MAX_HEIGHT for height in heights)
+        assert any(height >= PATTERN_TETRIS_MIN_HEIGHT for height in heights)
+
+    def test_the_skyline_varies_in_height(self) -> None:
+        for seed in (1, 11, 42, 99):
+            grid = generate(PATTERN_TETRIS, width=20, seed=seed)
+            heights = [height for height in _grounded_heights(grid) if height]
+            assert heights
+            assert max(heights) - min(heights) >= 2
+            assert min(heights) >= 1
+            assert max(heights) <= PATTERN_TETRIS_MAX_HEIGHT
+
 
 class TestText:
     def test_simone_fits_and_is_centred(self) -> None:
@@ -148,3 +186,82 @@ class TestText:
 
     def test_text_width_of_an_empty_string_is_zero(self) -> None:
         assert text_width("  ") == 0
+
+
+def _same_shade_groups(grid: list[list[int]]) -> list[tuple[set[tuple[int, int]], int]]:
+    """Four-connected groups of the same non-zero shade."""
+    height, width = len(grid), len(grid[0])
+    seen: set[tuple[int, int]] = set()
+    groups: list[tuple[set[tuple[int, int]], int]] = []
+    for row in range(height):
+        for column in range(width):
+            if not grid[row][column] or (row, column) in seen:
+                continue
+            level = grid[row][column]
+            stack = [(row, column)]
+            cells: set[tuple[int, int]] = set()
+            while stack:
+                r, c = stack.pop()
+                if (r, c) in cells:
+                    continue
+                cells.add((r, c))
+                for nr, nc in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+                    if 0 <= nr < height and 0 <= nc < width and grid[nr][nc] == level:
+                        stack.append((nr, nc))
+            seen.update(cells)
+            groups.append((cells, level))
+    return groups
+
+
+def _group_of(
+    pieces: list[tuple[set[tuple[int, int]], int]], cell: tuple[int, int]
+) -> set[tuple[int, int]]:
+    for cells, _level in pieces:
+        if cell in cells:
+            return cells
+    raise AssertionError(f"{cell} is not in any piece")
+
+
+def _is_tetromino(cells: set[tuple[int, int]]) -> bool:
+    min_row = min(row for row, _column in cells)
+    min_col = min(column for _row, column in cells)
+    shape = tuple(sorted((row - min_row, column - min_col) for row, column in cells))
+    return shape in _TETROMINO_SHAPES
+
+
+def _normalise(cells: tuple[tuple[int, int], ...]) -> tuple[tuple[int, int], ...]:
+    min_row = min(row for row, _column in cells)
+    min_col = min(column for _row, column in cells)
+    return tuple(sorted((row - min_row, column - min_col) for row, column in cells))
+
+
+_TETROMINO_SHAPES = {_normalise(rotation) for piece in TETROMINOES for rotation in piece}
+
+
+def _grounded_heights(grid: list[list[int]]) -> list[int]:
+    """Skyline height of each column, ignoring a tetromino that is still falling."""
+    floating = _floating_cells(grid)
+    heights: list[int] = []
+    width = len(grid[0])
+    for column in range(width):
+        filled = [
+            row
+            for row in range(DAYS_PER_WEEK)
+            if grid[row][column] and (row, column) not in floating
+        ]
+        heights.append(DAYS_PER_WEEK - min(filled) if filled else 0)
+    return heights
+
+
+def _floating_cells(grid: list[list[int]]) -> set[tuple[int, int]]:
+    floating: set[tuple[int, int]] = set()
+    for cells, _level in _same_shade_groups(grid):
+        if any(row == DAYS_PER_WEEK - 1 for row, _column in cells):
+            continue
+        if any(
+            row + 1 < DAYS_PER_WEEK and grid[row + 1][column] and (row + 1, column) not in cells
+            for row, column in cells
+        ):
+            continue
+        floating.update(cells)
+    return floating

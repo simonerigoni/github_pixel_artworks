@@ -144,7 +144,7 @@ The **Pattern** bar above the grid can fill it with a generated pattern (random,
 Preview a seeded Tetris board without committing:
 
 ```bash
-uv run github-pixel-artworks --pattern tetris --seed 99 --year 2026 --dry-run
+uv run github-pixel-artworks --pattern tetris --seed 29 --year 2026 --dry-run
 ```
 
 Draw text, such as a name, into your profile README repository:

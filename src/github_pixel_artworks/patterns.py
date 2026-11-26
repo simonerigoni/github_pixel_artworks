@@ -22,6 +22,8 @@ from .config import (
     PATTERN_OVERFLOWS,
     PATTERN_RANDOM,
     PATTERN_TETRIS,
+    PATTERN_TETRIS_MAX_HEIGHT,
+    PATTERN_TETRIS_MIN_HEIGHT,
     PATTERN_TEXT,
     PATTERN_TEXT_ALIGN_CENTER,
     PATTERN_TEXT_ALIGN_LEFT,
@@ -141,16 +143,46 @@ def _wave(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
 
 
 def _tetris(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
-    """Stack random tetrominoes that fall toward Saturday (the last row)."""
+    """Stack tetrominoes into a mid-game board with a ragged skyline.
+
+    Pieces fall toward Saturday (the last row). Each piece is one shade,
+    chosen so it differs from any orthogonally adjacent piece. The stack
+    stays between ``PATTERN_TETRIS_MIN_HEIGHT`` and
+    ``PATTERN_TETRIS_MAX_HEIGHT`` rows so the top is uneven, not a full
+    board. A falling piece is added above the stack when there is room.
+    """
     columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
     grid = _blank(columns)
+    targets = _skyline(columns, rng)
     for _ in range(columns * DAYS_PER_WEEK):  # more than enough; we stop when nothing fits
-        if not _drop_piece(grid, rng):
+        if not _drop_piece(grid, rng, max_heights=targets):
             break
+    _spawn_falling_piece(grid, rng)
     return grid
 
 
-def _drop_piece(grid: Grid, rng: random.Random) -> bool:
+def _skyline(columns: int, rng: random.Random) -> list[int]:
+    """Target stack height for each column, ragged between the allowed bounds."""
+    low, high = PATTERN_TETRIS_MIN_HEIGHT, PATTERN_TETRIS_MAX_HEIGHT
+    height = rng.randint(low, high)
+    targets: list[int] = []
+    for _ in range(columns):
+        height = max(low, min(high, height + rng.choice((-2, -1, -1, 0, 0, 0, 1, 1, 2))))
+        targets.append(height)
+    if columns >= 3 and max(targets) - min(targets) < 2:
+        index = rng.randrange(columns)
+        if targets[index] <= (low + high) // 2:
+            targets[index] = min(high, targets[index] + 2)
+        else:
+            targets[index] = max(low, targets[index] - 2)
+    return targets
+
+
+def _drop_piece(
+    grid: Grid,
+    rng: random.Random,
+    max_heights: list[int] | None = None,
+) -> bool:
     """Lock one tetromino, or return False if none can spawn."""
     columns = len(grid[0])
     shapes = [rotation for piece in TETROMINOES for rotation in piece]
@@ -163,13 +195,117 @@ def _drop_piece(grid: Grid, rng: random.Random) -> bool:
         rng.shuffle(starts)
         for start in starts:
             row = _drop_row(grid, cells, start)
-            if row is None:
+            if row is None or not _within_skyline(cells, row, start, max_heights):
                 continue
-            level = rng.randint(1, TOP_LEVEL)
-            for drow, dcol in cells:
-                grid[row + drow][start + dcol] = level
+            level = _contrasting_level(grid, cells, row, start, rng)
+            if level is None:
+                continue
+            _stamp_piece(grid, cells, row, start, level)
             return True
     return False
+
+
+def _spawn_falling_piece(grid: Grid, rng: random.Random) -> bool:
+    """Lock one tetromino that still has room to fall, if any such placement exists."""
+    columns = len(grid[0])
+    shapes = [rotation for piece in TETROMINOES for rotation in piece]
+    rng.shuffle(shapes)
+    for cells in shapes:
+        piece_width = max(col for _row, col in cells) + 1
+        if piece_width > columns:
+            continue
+        starts = list(range(columns - piece_width + 1))
+        rng.shuffle(starts)
+        max_row = DAYS_PER_WEEK - max(drow for drow, _col in cells) - 1
+        for start in starts:
+            for row in range(max_row):
+                if not _fits(grid, cells, row, start):
+                    continue
+                if not _fits(grid, cells, row + 1, start):
+                    continue  # already landed
+                level = _contrasting_level(grid, cells, row, start, rng)
+                if level is None:
+                    continue
+                _stamp_piece(grid, cells, row, start, level)
+                return True
+    return False
+
+
+def _stamp_piece(
+    grid: Grid, cells: tuple[tuple[int, int], ...], row: int, column: int, level: int
+) -> None:
+    for drow, dcol in cells:
+        grid[row + drow][column + dcol] = level
+
+
+def _within_skyline(
+    cells: tuple[tuple[int, int], ...],
+    row: int,
+    column: int,
+    max_heights: list[int] | None,
+) -> bool:
+    if max_heights is None:
+        return True
+    for drow, dcol in cells:
+        if row + drow < DAYS_PER_WEEK - max_heights[column + dcol]:
+            return False
+    return True
+
+
+def _contrasting_level(
+    grid: Grid,
+    cells: tuple[tuple[int, int], ...],
+    row: int,
+    column: int,
+    rng: random.Random,
+) -> int | None:
+    """Return a shade that stands out from neighbouring pieces, if any exist.
+
+    Orthogonal neighbours must differ (otherwise the piece would merge with
+    them). Diagonal neighbours are avoided when a free shade remains, and
+    among the leftover shades the one farthest from its neighbours is
+    preferred so pieces stay easy to tell apart.
+    """
+    orthogonal = _neighbour_levels(grid, cells, row, column, diagonal=False)
+    diagonal = _neighbour_levels(grid, cells, row, column, diagonal=True)
+    choices = [level for level in range(1, TOP_LEVEL + 1) if level not in diagonal]
+    if not choices:
+        choices = [level for level in range(1, TOP_LEVEL + 1) if level not in orthogonal]
+    if not choices:
+        return None
+    used = diagonal or orthogonal
+    if not used:
+        return rng.choice(choices)
+    best = max(min(abs(level - other) for other in used) for level in choices)
+    return rng.choice(
+        [level for level in choices if min(abs(level - other) for other in used) == best]
+    )
+
+
+def _neighbour_levels(
+    grid: Grid,
+    cells: tuple[tuple[int, int], ...],
+    row: int,
+    column: int,
+    *,
+    diagonal: bool,
+) -> set[int]:
+    height, width = len(grid), len(grid[0])
+    body = {(row + drow, column + dcol) for drow, dcol in cells}
+    deltas = (
+        ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
+        if diagonal
+        else ((-1, 0), (1, 0), (0, -1), (0, 1))
+    )
+    levels: set[int] = set()
+    for r, c in body:
+        for drow, dcol in deltas:
+            nr, nc = r + drow, c + dcol
+            if 0 <= nr < height and 0 <= nc < width and (nr, nc) not in body:
+                level = grid[nr][nc]
+                if level:
+                    levels.add(level)
+    return levels
 
 
 def _fits(grid: Grid, cells: tuple[tuple[int, int], ...], row: int, column: int) -> bool:
