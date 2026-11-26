@@ -4,11 +4,12 @@ github-pixel-artworks
 Create pixel artworks in your GitHub contributions chart by generating backdated commits.
 """
 
-try:
-    from importlib.metadata import version as pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 
+try:
     __version__ = pkg_version("github-pixel-artworks")
-except Exception:
+except PackageNotFoundError:  # running from a source tree without installing
     __version__ = "0.1.0"
 
 # Re-export the main public API from core
