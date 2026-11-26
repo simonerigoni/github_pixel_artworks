@@ -19,11 +19,11 @@ from github_pixel_artworks import gui
 from github_pixel_artworks.config import (
     ACTIONS_PANE_MIN_WIDTH,
     DAYS_PER_WEEK,
+    DEFAULT_COLUMNS,
     DRAWINGS_PANE_MIN_WIDTH,
     EDITOR_PANE_MIN_WIDTH,
     EMPTY_COLOR,
     GENERATE_BUTTON_TEXT,
-    GRID_YEAR_WEEKS,
     LEVEL_COLORS,
     MAX_CELL_SIZE,
     MAX_WEEKS,
@@ -153,14 +153,31 @@ class TestPainting:
         assert app.grid[2][2] == 4
 
     def test_columns_can_be_added_and_removed_within_limits(self, app: gui.PixelArtGUI) -> None:
+        assert app.columns == DEFAULT_COLUMNS
         paint(app, 2, 0, 9)
 
         app._resize_grid(app.columns + 1)
-        assert app.columns == 11
-        assert app.grid[0][9:] == [2, 0]
+        assert app.columns == MAX_WEEKS
+        assert app.grid[0][9] == 2
+
+        app._resize_grid(app.columns - 1)
+        assert app.columns == MAX_WEEKS - 1
+        assert app.grid[0][9] == 2
+
+        app._resize_grid(app.columns + 1)
+        assert app.columns == MAX_WEEKS
 
         app._resize_grid(1)
         assert app.columns == gui.MIN_COLUMNS
+
+    def test_new_starts_a_year_of_weeks(self, app: gui.PixelArtGUI) -> None:
+        app._resize_grid(gui.MIN_COLUMNS)
+        assert app.columns == gui.MIN_COLUMNS
+
+        app._new_grid()
+
+        assert app.columns == DEFAULT_COLUMNS
+        assert DEFAULT_COLUMNS == MAX_WEEKS
 
 
 class TestDrawingFiles:
@@ -339,7 +356,7 @@ class TestLayout:
         size = coords[2] - coords[0]
         assert size == coords[3] - coords[1]
         assert size == window.cell_size
-        weeks = max(GRID_YEAR_WEEKS, MAX_WEEKS)
+        weeks = MAX_WEEKS
         assert MAX_WEEKS * size <= canvas_width
         assert abs(size - (canvas_width - 2) // weeks) <= 1
         assert DAYS_PER_WEEK * size < canvas_height
@@ -522,6 +539,7 @@ class TestPatternControls:
         assert app.grid != first
 
     def test_text_pattern_widens_the_grid_to_fit(self, app: gui.PixelArtGUI) -> None:
+        app._resize_grid(gui.MIN_COLUMNS)
         app.pattern_var.set(PATTERN_TEXT)
         app.pattern_text_var.set("SIMONE")
 
