@@ -142,7 +142,23 @@ PATTERN_MIRROR = "mirror"
 PATTERN_WAVE = "wave"
 PATTERN_TETRIS = "tetris"
 PATTERN_TEXT = "text"
-PATTERN_NAMES = (PATTERN_RANDOM, PATTERN_MIRROR, PATTERN_WAVE, PATTERN_TETRIS, PATTERN_TEXT)
+PATTERN_SPACE_INVADERS = "space_invaders"
+PATTERN_GAME_OF_LIFE = "game_of_life"
+PATTERN_SNAKE = "snake"
+PATTERN_HEARTS = "hearts"
+PATTERN_STRIPES = "stripes"
+PATTERN_NAMES = (
+    PATTERN_RANDOM,
+    PATTERN_MIRROR,
+    PATTERN_WAVE,
+    PATTERN_TETRIS,
+    PATTERN_TEXT,
+    PATTERN_SPACE_INVADERS,
+    PATTERN_GAME_OF_LIFE,
+    PATTERN_SNAKE,
+    PATTERN_HEARTS,
+    PATTERN_STRIPES,
+)
 """Themes offered by the CLI ``--pattern`` flag and the GUI pattern control."""
 
 PATTERN_DEFAULT_WIDTH = 20
@@ -159,6 +175,17 @@ PATTERN_TETRIS_DENSITY = 0.35
 PATTERN_TETRIS_CLUSTER_MIN = 3
 PATTERN_TETRIS_CLUSTER_MAX = 7
 """Width in columns of one pile of pieces; gaps between piles come from density."""
+PATTERN_INVADER_GAP = 5
+"""Empty columns between Space Invader sprites."""
+PATTERN_LIFE_GENERATIONS = 12
+"""Conway generations to evolve the seeded soup before painting."""
+PATTERN_LIFE_DENSITY = 0.32
+"""Default fill chance of the Game of Life soup."""
+PATTERN_SNAKE_MIN_LENGTH = 8
+PATTERN_SNAKE_LENGTH_PER_COLUMN = 0.55
+"""Snake length is ``max(MIN_LENGTH, round(width * LENGTH_PER_COLUMN))``, plus an apple."""
+PATTERN_HEART_GAP = 3
+"""Empty columns between repeated 5-wide hearts."""
 PATTERN_TEXT_ALIGN_CENTER = "center"
 PATTERN_TEXT_ALIGN_LEFT = "left"
 PATTERN_TEXT_ALIGNS = (PATTERN_TEXT_ALIGN_CENTER, PATTERN_TEXT_ALIGN_LEFT)
@@ -246,6 +273,48 @@ TETROMINOES: tuple[tuple[_Cells, ...], ...] = (
     ),
 )
 """The seven tetrominoes, each as the rotations used by the tetris pattern."""
+
+# Sprite rows use '.' for empty, '#' for the primary shade and 'o' for a second shade.
+type _Sprite = tuple[str, ...]
+PATTERN_INVADER_SPRITES: tuple[_Sprite, ...] = (
+    (  # crab
+        "..#.....#..",
+        "...#...#...",
+        "..#######..",
+        ".##o###o##.",
+        "###########",
+        "#.#.....#.#",
+        "...##.##...",
+    ),
+    (  # squid
+        "...##...",
+        "..####..",
+        ".######.",
+        "##o##o##",
+        "########",
+        ".#.##.#.",
+        "#.#..#.#",
+    ),
+    (  # octopus
+        "...######...",
+        ".##########.",
+        "############",
+        "###o.##.o###",
+        "############",
+        "..###..###..",
+        ".##..##..##.",
+    ),
+)
+"""Classic Space Invader silhouettes, each at most 7 rows tall."""
+
+PATTERN_HEART_SPRITE: _Sprite = (
+    ".#.#.",
+    "#####",
+    "#####",
+    ".###.",
+    "..#..",
+)
+"""A 5-wide heart that fits in the 7-row contribution grid."""
 
 # CLI exit codes --------------------------------------------------------------
 

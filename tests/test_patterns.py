@@ -8,10 +8,18 @@ from github_pixel_artworks.config import (
     MAX_WEEKS,
     PATTERN_FONT_GAP,
     PATTERN_FONT_WIDTH,
+    PATTERN_GAME_OF_LIFE,
+    PATTERN_HEART_GAP,
+    PATTERN_HEART_SPRITE,
+    PATTERN_HEARTS,
+    PATTERN_INVADER_SPRITES,
     PATTERN_MIRROR,
     PATTERN_NAMES,
     PATTERN_OVERFLOW_TRUNCATE,
     PATTERN_RANDOM,
+    PATTERN_SNAKE,
+    PATTERN_SPACE_INVADERS,
+    PATTERN_STRIPES,
     PATTERN_TETRIS,
     PATTERN_TETRIS_DENSITY,
     PATTERN_TETRIS_MAX_HEIGHT,
@@ -44,11 +52,24 @@ class TestRegistry:
 
 
 class TestShapeAndSeed:
-    @pytest.mark.parametrize("name", [PATTERN_RANDOM, PATTERN_MIRROR, PATTERN_WAVE, PATTERN_TETRIS])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            PATTERN_RANDOM,
+            PATTERN_MIRROR,
+            PATTERN_WAVE,
+            PATTERN_TETRIS,
+            PATTERN_SPACE_INVADERS,
+            PATTERN_GAME_OF_LIFE,
+            PATTERN_SNAKE,
+            PATTERN_HEARTS,
+            PATTERN_STRIPES,
+        ],
+    )
     def test_a_seeded_pattern_is_deterministic_and_in_range(self, name: str) -> None:
         first = generate(name, width=16, seed=42)
         second = generate(name, width=16, seed=42)
-        other = generate(name, width=16, seed=43)
+        other = generate(name, width=16, seed=7)
 
         assert_valid(first, 16)
         assert first == second
@@ -160,6 +181,75 @@ class TestTetris:
         dense = generate(PATTERN_TETRIS, width=52, seed=7, density=1.0)
         assert default == sparse
         assert len(_same_shade_groups(dense)) > len(_same_shade_groups(sparse))
+
+
+class TestSpaceInvaders:
+    def test_stamps_classic_sprites(self) -> None:
+        grid = generate(PATTERN_SPACE_INVADERS, width=52, seed=3)
+        assert_valid(grid, 52)
+        assert any(level for row in grid for level in row)
+        matches = _matching_sprites(grid, PATTERN_INVADER_SPRITES)
+        assert matches
+        # Each stamped invader uses one or two shades.
+        for _origin, on_cells in matches:
+            shades = {grid[row][column] for row, column in on_cells}
+            assert shades <= set(range(1, TOP_LEVEL + 1))
+            assert 1 <= len(shades) <= 2
+
+
+class TestGameOfLife:
+    def test_evolves_a_non_empty_board_with_ages(self) -> None:
+        grid = generate(PATTERN_GAME_OF_LIFE, width=52, seed=11)
+        assert_valid(grid, 52)
+        levels = {level for row in grid for level in row}
+        assert 0 in levels
+        assert any(level > 0 for level in levels)
+
+
+class TestSnake:
+    def test_has_a_gradient_body_and_an_apple(self) -> None:
+        grid = generate(PATTERN_SNAKE, width=52, seed=7)
+        assert_valid(grid, 52)
+        body, apple = _snake_and_apple(grid)
+        assert len(body) >= 2
+        assert apple is not None
+        levels = [grid[row][column] for row, column in body]
+        assert levels[0] == 1
+        assert levels[-1] == TOP_LEVEL
+        assert levels == sorted(levels)
+        assert grid[apple[0]][apple[1]] == TOP_LEVEL
+
+
+class TestHearts:
+    def test_repeats_the_five_wide_heart(self) -> None:
+        grid = generate(PATTERN_HEARTS, width=52, seed=2)
+        assert_valid(grid, 52)
+        matches = _matching_sprites(grid, (PATTERN_HEART_SPRITE,))
+        assert len(matches) >= 3
+        origins = [origin for origin, _cells in matches]
+        stride = len(PATTERN_HEART_SPRITE[0]) + PATTERN_HEART_GAP
+        assert all(
+            right - left == stride for left, right in zip(origins, origins[1:], strict=False)
+        )
+
+
+class TestStripes:
+    def test_diagonals_share_a_shade_and_cycle(self) -> None:
+        grid = generate(PATTERN_STRIPES, width=20, seed=5)
+        assert_valid(grid, 20)
+        levels = {level for row in grid for level in row}
+        assert levels == {1, 2, 3, 4}
+        down_right = all(
+            grid[row][column] == grid[row + 1][column + 1]
+            for row in range(DAYS_PER_WEEK - 1)
+            for column in range(19)
+        )
+        down_left = all(
+            grid[row][column] == grid[row + 1][column - 1]
+            for row in range(DAYS_PER_WEEK - 1)
+            for column in range(1, 20)
+        )
+        assert down_right or down_left
 
 
 class TestText:
@@ -297,3 +387,75 @@ def _longest_empty_run(heights: list[int]) -> int:
         else:
             current = 0
     return longest
+
+
+def _matching_sprites(
+    grid: list[list[int]], sprites: tuple[tuple[str, ...], ...]
+) -> list[tuple[int, set[tuple[int, int]]]]:
+    """Return (origin column, filled cells) for every sprite mask found on the grid."""
+    found: list[tuple[int, set[tuple[int, int]]]] = []
+    width = len(grid[0])
+    for sprite in sprites:
+        sprite_width = len(sprite[0])
+        top = max(0, (DAYS_PER_WEEK - len(sprite)) // 2)
+        mask = [
+            (drow, dcol)
+            for drow, line in enumerate(sprite)
+            for dcol, char in enumerate(line)
+            if char in "#o"
+        ]
+        for origin in range(0, width - sprite_width + 1):
+            if all(
+                bool(grid[top + drow][origin + dcol]) == ((drow, dcol) in set(mask))
+                if 0 <= top + drow < DAYS_PER_WEEK
+                else False
+                for drow in range(len(sprite))
+                for dcol in range(sprite_width)
+            ):
+                cells = {(top + drow, origin + dcol) for drow, dcol in mask}
+                found.append((origin, cells))
+    found.sort()
+    return found
+
+
+def _snake_and_apple(
+    grid: list[list[int]],
+) -> tuple[list[tuple[int, int]], tuple[int, int] | None]:
+    filled = [
+        (row, column) for row, line in enumerate(grid) for column, level in enumerate(line) if level
+    ]
+    isolated = [
+        cell
+        for cell in filled
+        if not any(
+            neighbour in set(filled) and neighbour != cell for neighbour in _orth_neighbours(cell)
+        )
+    ]
+    apple = isolated[0] if len(isolated) == 1 else None
+    body_cells = [cell for cell in filled if cell != apple]
+    body = _order_path(body_cells, grid)
+    return body, apple
+
+
+def _orth_neighbours(cell: tuple[int, int]) -> list[tuple[int, int]]:
+    row, column = cell
+    return [(row - 1, column), (row + 1, column), (row, column - 1), (row, column + 1)]
+
+
+def _order_path(cells: list[tuple[int, int]], grid: list[list[int]]) -> list[tuple[int, int]]:
+    remaining = set(cells)
+    endpoints = [
+        cell
+        for cell in cells
+        if sum(neighbour in remaining for neighbour in _orth_neighbours(cell)) == 1
+    ]
+    start = min(endpoints, key=lambda cell: grid[cell[0]][cell[1]]) if endpoints else cells[0]
+    path = [start]
+    remaining.remove(start)
+    while remaining:
+        nxt = next((n for n in _orth_neighbours(path[-1]) if n in remaining), None)
+        if nxt is None:
+            break
+        path.append(nxt)
+        remaining.remove(nxt)
+    return path

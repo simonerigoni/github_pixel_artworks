@@ -16,11 +16,24 @@ from .config import (
     PATTERN_FONT_GAP,
     PATTERN_FONT_HEIGHT,
     PATTERN_FONT_WIDTH,
+    PATTERN_GAME_OF_LIFE,
+    PATTERN_HEART_GAP,
+    PATTERN_HEART_SPRITE,
+    PATTERN_HEARTS,
+    PATTERN_INVADER_GAP,
+    PATTERN_INVADER_SPRITES,
+    PATTERN_LIFE_DENSITY,
+    PATTERN_LIFE_GENERATIONS,
     PATTERN_MIRROR,
     PATTERN_NAMES,
     PATTERN_OVERFLOW_ERROR,
     PATTERN_OVERFLOWS,
     PATTERN_RANDOM,
+    PATTERN_SNAKE,
+    PATTERN_SNAKE_LENGTH_PER_COLUMN,
+    PATTERN_SNAKE_MIN_LENGTH,
+    PATTERN_SPACE_INVADERS,
+    PATTERN_STRIPES,
     PATTERN_TETRIS,
     PATTERN_TETRIS_CLUSTER_MAX,
     PATTERN_TETRIS_CLUSTER_MIN,
@@ -69,7 +82,7 @@ def generate(
     if key not in GENERATORS:
         raise ValueError(f"Unknown pattern {name!r}. Choose one of: {', '.join(PATTERN_NAMES)}.")
     if density is None:
-        density = PATTERN_TETRIS_DENSITY if key == PATTERN_TETRIS else PATTERN_DEFAULT_DENSITY
+        density = _default_density(key)
     if not 0 <= density <= 1:
         raise ValueError(f"density must be between 0 and 1 (got {density}).")
     if overflow not in PATTERN_OVERFLOWS:
@@ -101,6 +114,14 @@ def _require_width(width: int) -> int:
     if width < 1 or width > MAX_WEEKS:
         raise ValueError(f"pattern width must be between 1 and {MAX_WEEKS} (got {width}).")
     return width
+
+
+def _default_density(name: str) -> float:
+    if name == PATTERN_TETRIS:
+        return PATTERN_TETRIS_DENSITY
+    if name == PATTERN_GAME_OF_LIFE:
+        return PATTERN_LIFE_DENSITY
+    return PATTERN_DEFAULT_DENSITY
 
 
 def _blank(width: int) -> Grid:
@@ -473,12 +494,253 @@ def _stamp(grid: Grid, char: str, origin: int) -> None:
                 grid[row][origin + column] = TOP_LEVEL
 
 
+def _space_invaders(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
+    """Stamp a few classic invader sprites, spaced across the grid."""
+    columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
+    grid = _blank(columns)
+    order = list(PATTERN_INVADER_SPRITES)
+    rng.shuffle(order)
+    min_width = min(len(sprite[0]) for sprite in order)
+    max_start = max(0, columns - min_width)
+    column = rng.randint(0, min(PATTERN_INVADER_GAP, max_start)) if max_start else 0
+    index = 0
+    while column < columns:
+        sprite = None
+        for offset in range(len(order)):
+            candidate = order[(index + offset) % len(order)]
+            if column + len(candidate[0]) <= columns:
+                sprite = candidate
+                index += offset + 1
+                break
+        if sprite is None:
+            break
+        primary = rng.randint(1, TOP_LEVEL)
+        others = [level for level in range(1, TOP_LEVEL + 1) if level != primary]
+        secondary = rng.choice(others) if others else primary
+        _stamp_sprite(grid, sprite, column, primary, secondary)
+        column += len(sprite[0]) + PATTERN_INVADER_GAP
+    return grid
+
+
+def _stamp_sprite(
+    grid: Grid, sprite: tuple[str, ...], origin: int, primary: int, secondary: int
+) -> None:
+    top = max(0, (DAYS_PER_WEEK - len(sprite)) // 2)
+    for drow, line in enumerate(sprite):
+        row = top + drow
+        if row >= DAYS_PER_WEEK:
+            break
+        for dcol, char in enumerate(line):
+            column = origin + dcol
+            if column >= len(grid[0]):
+                break
+            if char == "#":
+                grid[row][column] = primary
+            elif char == "o":
+                grid[row][column] = secondary
+
+
+def _game_of_life(
+    *, width: int | None, rng: random.Random, density: float, **_extra: object
+) -> Grid:
+    """Evolve a seeded soup and paint each live cell by how long it has survived."""
+    columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
+    alive = [[rng.random() < density for _ in range(columns)] for _ in range(DAYS_PER_WEEK)]
+    age = [[1 if cell else 0 for cell in row] for row in alive]
+    last_age = [row[:] for row in age]
+    for _ in range(PATTERN_LIFE_GENERATIONS):
+        alive, age = _life_generation(alive, age)
+        if any(cell for row in alive for cell in row):
+            last_age = [row[:] for row in age]
+    return [[min(value, TOP_LEVEL) if value else 0 for value in row] for row in last_age]
+
+
+def _life_generation(
+    alive: list[list[bool]], age: list[list[int]]
+) -> tuple[list[list[bool]], list[list[int]]]:
+    height, width = len(alive), len(alive[0])
+    next_alive = [[False] * width for _ in range(height)]
+    next_age = [[0] * width for _ in range(height)]
+    for row in range(height):
+        for column in range(width):
+            neighbours = _life_neighbours(alive, row, column)
+            if alive[row][column]:
+                stays = neighbours in (2, 3)
+                next_alive[row][column] = stays
+                next_age[row][column] = age[row][column] + 1 if stays else 0
+            elif neighbours == 3:
+                next_alive[row][column] = True
+                next_age[row][column] = 1
+    return next_alive, next_age
+
+
+def _life_neighbours(alive: list[list[bool]], row: int, column: int) -> int:
+    height, width = len(alive), len(alive[0])
+    count = 0
+    for drow in (-1, 0, 1):
+        for dcol in (-1, 0, 1):
+            if drow == 0 and dcol == 0:
+                continue
+            if alive[(row + drow) % height][(column + dcol) % width]:
+                count += 1
+    return count
+
+
+def _snake(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
+    """A self-avoiding snake with a tail-to-head gradient and one apple."""
+    columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
+    grid = _blank(columns)
+    length = max(
+        PATTERN_SNAKE_MIN_LENGTH,
+        min(columns * DAYS_PER_WEEK - 1, round(columns * PATTERN_SNAKE_LENGTH_PER_COLUMN)),
+    )
+    start_row = rng.randrange(DAYS_PER_WEEK)
+    start_col = rng.randrange(max(1, (columns + 3) // 4))
+    path = _snake_path(start_row, start_col, length, columns, rng)
+    _paint_snake(grid, path)
+    _place_apple(grid, path, rng)
+    return grid
+
+
+def _snake_path(
+    row: int, column: int, length: int, width: int, rng: random.Random
+) -> list[tuple[int, int]]:
+    path = [(row, column)]
+    occupied = {(row, column)}
+    heading = (0, 1)
+    for _ in range(max(0, length - 1)):
+        choices = [
+            delta
+            for delta in ((-1, 0), (1, 0), (0, -1), (0, 1))
+            if _snake_can_step(row + delta[0], column + delta[1], width, occupied, path[-1])
+        ]
+        if not choices:
+            break
+        delta = _snake_step(choices, heading, rng)
+        row += delta[0]
+        column += delta[1]
+        heading = delta
+        path.append((row, column))
+        occupied.add((row, column))
+    return path
+
+
+def _snake_step(
+    choices: list[tuple[int, int]], heading: tuple[int, int], rng: random.Random
+) -> tuple[int, int]:
+    """Prefer going right, then forwards, so the snake winds across the grid."""
+    right = (0, 1)
+    if right in choices and rng.random() < 0.6:
+        return right
+    if heading in choices and rng.random() < 0.7:
+        return heading
+    return rng.choice(choices)
+
+
+def _snake_can_step(
+    row: int,
+    column: int,
+    width: int,
+    occupied: set[tuple[int, int]],
+    current: tuple[int, int],
+) -> bool:
+    if not (0 <= row < DAYS_PER_WEEK and 0 <= column < width) or (row, column) in occupied:
+        return False
+    # Stay a simple path: do not run alongside earlier segments.
+    return not any(
+        neighbour in occupied and neighbour != current
+        for neighbour in (
+            (row - 1, column),
+            (row + 1, column),
+            (row, column - 1),
+            (row, column + 1),
+        )
+    )
+
+
+def _paint_snake(grid: Grid, path: list[tuple[int, int]]) -> None:
+    last = max(len(path) - 1, 1)
+    for index, (row, column) in enumerate(path):
+        grid[row][column] = 1 + (index * (TOP_LEVEL - 1)) // last
+
+
+def _place_apple(grid: Grid, path: list[tuple[int, int]], rng: random.Random) -> None:
+    occupied = set(path)
+    height, width = len(grid), len(grid[0])
+    isolated = [
+        (row, column)
+        for row in range(height)
+        for column in range(width)
+        if (row, column) not in occupied and not _orthogonally_touches((row, column), occupied)
+    ]
+    if not isolated:
+        return
+    row, column = isolated[rng.randrange(len(isolated))]
+    if len(path) >= 2:
+        ahead = _ahead_of_head(path, steps=2)
+        preferred = [cell for cell in isolated if cell == ahead or _chebyshev(cell, ahead) <= 2]
+        if preferred:
+            row, column = preferred[rng.randrange(len(preferred))]
+    grid[row][column] = TOP_LEVEL
+
+
+def _ahead_of_head(path: list[tuple[int, int]], steps: int) -> tuple[int, int]:
+    row, column = path[-1]
+    prow, pcol = path[-2]
+    return (row + (row - prow) * steps, column + (column - pcol) * steps)
+
+
+def _orthogonally_touches(cell: tuple[int, int], occupied: set[tuple[int, int]]) -> bool:
+    row, column = cell
+    return any(
+        (row + drow, column + dcol) in occupied for drow, dcol in ((-1, 0), (1, 0), (0, -1), (0, 1))
+    )
+
+
+def _chebyshev(left: tuple[int, int], right: tuple[int, int]) -> int:
+    return max(abs(left[0] - right[0]), abs(left[1] - right[1]))
+
+
+def _hearts(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
+    """Repeat a 5-wide heart across the grid, with gaps and varying shades."""
+    columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
+    grid = _blank(columns)
+    sprite_width = len(PATTERN_HEART_SPRITE[0])
+    stride = sprite_width + PATTERN_HEART_GAP
+    if sprite_width > columns:
+        return grid
+    origin = rng.randrange(0, min(PATTERN_HEART_GAP, columns - sprite_width) + 1)
+    shade = rng.randint(1, TOP_LEVEL)
+    column = origin
+    while column + sprite_width <= columns:
+        _stamp_sprite(grid, PATTERN_HEART_SPRITE, column, shade, shade)
+        shade = 1 + (shade % TOP_LEVEL)
+        column += stride
+    return grid
+
+
+def _stripes(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
+    """Diagonal stripes cycling through levels 1 to 4."""
+    columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
+    phase = rng.randrange(TOP_LEVEL)
+    slope = rng.choice((1, -1))
+    return [
+        [1 + (row + slope * column + phase) % TOP_LEVEL for column in range(columns)]
+        for row in range(DAYS_PER_WEEK)
+    ]
+
+
 GENERATORS: dict[str, PatternGenerator] = {
     PATTERN_RANDOM: _random_noise,
     PATTERN_MIRROR: _mirror,
     PATTERN_WAVE: _wave,
     PATTERN_TETRIS: _tetris,
     PATTERN_TEXT: _text,
+    PATTERN_SPACE_INVADERS: _space_invaders,
+    PATTERN_GAME_OF_LIFE: _game_of_life,
+    PATTERN_SNAKE: _snake,
+    PATTERN_HEARTS: _hearts,
+    PATTERN_STRIPES: _stripes,
 }
 """Name to generator; add a theme by putting a function here and a name in PATTERN_NAMES."""
 

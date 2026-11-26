@@ -171,12 +171,17 @@ def capture_readme_shots() -> list[Path]:
 
 
 def capture_pattern_previews(out_dir: Path) -> list[Path]:
-    """Capture Tetris, text and mirror patterns as they appear in the editor."""
+    """Capture named pattern previews as they appear in the editor."""
     out_dir.mkdir(parents=True, exist_ok=True)
     shots = [
         (out_dir / "pattern_tetris.png", "tetris", 52, 1, ""),
         (out_dir / "pattern_text.png", "text", 10, 1, "SIMONE"),
         (out_dir / "pattern_mirror.png", "mirror", 36, 7, ""),
+        (out_dir / "pattern_space_invaders.png", "space_invaders", 52, 11, ""),
+        (out_dir / "pattern_game_of_life.png", "game_of_life", 52, 21, ""),
+        (out_dir / "pattern_snake.png", "snake", 52, 11, ""),
+        (out_dir / "pattern_hearts.png", "hearts", 52, 2, ""),
+        (out_dir / "pattern_stripes.png", "stripes", 52, 5, ""),
     ]
     saved: list[Path] = []
     for path, name, width, seed, text in shots:
@@ -195,7 +200,7 @@ def main() -> None:
     parser.add_argument(
         "--previews",
         type=Path,
-        help="Write pattern preview PNGs (tetris, text, mirror) to this folder "
+        help="Write pattern preview PNGs to this folder "
         "instead of recapturing the README screenshots.",
     )
     args = parser.parse_args()
