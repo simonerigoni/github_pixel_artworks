@@ -142,7 +142,7 @@ Each column of the artwork is a week starting on Sunday, and each row is a day. 
 
 ![How data/heart.txt maps onto contribution days for 2026](images/grid_diagram.svg)
 
-The diagram is generated from the package's own loader and date logic with `uv run python scripts/render_grid_diagram.py`.
+The diagram is generated from the package's own loader and date logic with `uv run python scripts/render_grid_diagram.py`. The GUI screenshots are recaptured with `xvfb-run -a -s "-screen 0 1920x1080x24" uv run python scripts/capture_gui_screenshots.py`.
 
 GitHub only counts a commit on your profile if it meets three conditions:
 
