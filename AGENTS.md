@@ -19,7 +19,7 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
   - `painter.py`: `preview` and `apply_drawing`, which both front ends call; it fails with `MissingIdentityError` before cloning or committing, and deletes a URL-target clone unless it holds unpushed art or `keep_clone` is set
   - `cli.py`, `gui.py`: the front ends
 - `data/`: example artworks (see `data/DATA.md`), also where the GUI saves
-- `images/`: README figures; regenerate `grid_diagram.svg` with `uv run python scripts/render_grid_diagram.py`
+- `images/`: README figures; regenerate `grid_diagram.svg` with `uv run python scripts/render_grid_diagram.py`; recapture `gui_editor.png` and `gui_levels.png` with `xvfb-run -a -s "-screen 0 1920x1080x24" uv run python scripts/capture_gui_screenshots.py`
 - `tests/`: one test module per source module; `conftest.py` provides a throwaway `git_repo`, bare `file://` remotes, an empty global git config and HOME, no git identity env, an empty working directory, a per-test project root for URL-target clones, a `source_checkout` with a local-only identity, no `gh`, and blocks the network
 
 ## Workflow
