@@ -22,9 +22,17 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def global_git_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty global git config, and no ``gh``, so no test sees the real user's settings."""
+    """No git settings and no ``gh``, so no test sees the real user's settings.
+
+    The global config is an empty file, system config is off, and tests run in an
+    empty directory outside any repository, so this clone's own settings stay out.
+    """
     path = tmp_path / "gitconfig"
     path.write_text("", encoding="utf-8")
+    workdir = tmp_path / "cwd"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.setattr("github_pixel_artworks.github.GH_COMMAND", "gh-not-installed-in-tests")

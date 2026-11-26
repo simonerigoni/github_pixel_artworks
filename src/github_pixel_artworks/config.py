@@ -73,6 +73,12 @@ GH_COMMAND = "gh"
 """GitHub CLI, asked for the signed-in login when installed (``gh api user``)."""
 GH_TIMEOUT_SECONDS = 5
 GIT_CONFIG_TIMEOUT_SECONDS = 5
+COMMIT_SEARCH_URL = "https://api.github.com/search/commits?q={query}"
+"""GitHub's public commit search, asked unauthenticated for the login behind ``user.email``."""
+COMMIT_SEARCH_QUERY = "author-email:{email}"
+COMMIT_SEARCH_TIMEOUT_SECONDS = 5
+API_HEADERS = {"Accept": "application/vnd.github+json", "User-Agent": "github_pixel_artworks"}
+"""Sent with GitHub API requests; the API rejects requests without a User-Agent."""
 
 GITHUB_REMOTE_PREFIXES = (
     "git@github.com:",
@@ -82,7 +88,11 @@ GITHUB_REMOTE_PREFIXES = (
 )
 
 USERNAME_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}")
-"""1 to 39 letters, digits or single inner hyphens."""
+"""1 to 39 letters, digits or single inner hyphens.
+
+Also decides whether ``git config user.name`` can be taken as a guess of the
+login: it must match in full, so names with spaces never do.
+"""
 
 DAY_COUNT_RE = re.compile(r">\s*([\d,]+) contributions? on ")
 """Day tooltip text, e.g. ``12 contributions on May 2nd.`` (``No contributions`` is skipped)."""
