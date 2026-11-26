@@ -20,3 +20,17 @@ target_cloned_repo/
 
 # pytest-cov stuff
 .coverage
+
+# Local secrets and logs
+.env
+.env.*
+*.log
+
+# Extra Python / tooling artefacts
+__pycache__/
+*.egg-info/
+dist/
+build/
+htmlcov/
+.mypy_cache/
+.DS_Store

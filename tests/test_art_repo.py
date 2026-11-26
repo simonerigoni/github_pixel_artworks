@@ -18,8 +18,11 @@ from github_pixel_artworks.art_repo import (
     local_checkout_path,
     open_art_repo,
     push_branch,
+    redact_remote_url,
+    redact_urls_in,
     remove_dir_if_empty,
     remove_tree,
+    repo_folder_name,
     target_clone_parent,
 )
 from github_pixel_artworks.config import TARGET_CLONE_DIR_NAME
@@ -70,6 +73,56 @@ class TestLocalCheckoutPath:
 
     def test_a_path_is_used_as_is(self, tmp_path: Path) -> None:
         assert local_checkout_path(str(tmp_path / "art")) == tmp_path / "art"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://github.com/you/pixel-art",
+        "https://github.com/you/pixel-art.git/",
+        "git@github.com:you/pixel-art.git",
+        "https://x-access-token:secret@github.com/you/pixel-art.git",
+    ],
+)
+def test_repo_folder_name_uses_the_repository_name(url: str) -> None:
+    assert repo_folder_name(url) == "pixel-art"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://github.com/you/..",
+        "https://github.com/you/.",
+        "https://github.com/you/..git",
+    ],
+)
+def test_repo_folder_name_rejects_names_that_would_leave_the_parent(url: str) -> None:
+    with pytest.raises(ValueError, match="safe folder name"):
+        repo_folder_name(url)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://github.com/owner/repo.git", "https://github.com/owner/repo.git"),
+        ("git@github.com:owner/repo.git", "git@github.com:owner/repo.git"),
+        ("ssh://git@github.com/owner/repo.git", "ssh://git@github.com/owner/repo.git"),
+        (
+            "https://x-access-token:secret@github.com/owner/repo.git",
+            "https://github.com/owner/repo.git",
+        ),
+        ("https://token@github.com/owner/repo.git", "https://github.com/owner/repo.git"),
+        ("https://user:pass@github.com:8443/owner/repo", "https://github.com:8443/owner/repo"),
+    ],
+)
+def test_redact_remote_url_strips_embedded_credentials(url: str, expected: str) -> None:
+    assert redact_remote_url(url) == expected
+
+
+def test_redact_urls_in_strips_credentials_inside_a_message() -> None:
+    message = "fatal: could not read from 'https://x-access-token:secret@github.com/owner/repo.git'"
+    assert "secret" not in redact_urls_in(message)
+    assert "https://github.com/owner/repo.git" in redact_urls_in(message)
 
 
 class TestOpenArtRepo:

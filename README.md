@@ -156,18 +156,6 @@ GitHub only counts a commit on your profile if it meets three conditions:
 
 The tool handles these by default. It commits on the default branch of a repository you own, refuses this project's own checkout, and warns when the repository is a fork or `user.email` is unset or is the no-reply address of another account. See GitHub's [troubleshooting guide](https://docs.github.com/en/account-and-profile/reference/why-are-my-contributions-not-showing-up-on-my-profile). Contributions in private repositories only appear if you show private contributions on your profile.
 
-The package is organised as:
-
-- `config.py`: every named constant, grouped by topic
-- `artwork.py`: the file format and intensity levels
-- `dates.py`: the calendar placement
-- `art_repo.py`: finding, cloning a URL into `target_cloned_repo/`, pushing and deleting the target repository
-- `identity.py`: the git identity the commits are made with
-- `github.py`: usernames and their detection, the contribution calendar, remote URLs, and the email and fork checks
-- `patterns.py`: generated grids (random, mirror, wave, tetris, text, space_invaders, game_of_life, hearts, stripes, icons_dungeon, icons_nature) used by the CLI and GUI
-- `painter.py`: `apply_drawing`, which creates the commits
-- `cli.py` and `gui.py`: the two front ends
-
 ## List of activities
 
 In the [TODO.md](TODO.md) file you can find the list of tasks and ongoing activities.

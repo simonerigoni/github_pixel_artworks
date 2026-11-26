@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from . import __version__
+from .art_repo import redact_remote_url, redact_urls_in
 from .artwork import Grid, load_grid
 from .config import (
     ART_BRANCH_PREFIX,
@@ -91,16 +92,17 @@ def perform_pixel_art(
             log=print,
         )
     except Exception as error:  # report any failure as a CLI error
-        _fail(str(error), EXIT_DRAWING_FAILED)
+        _fail(redact_urls_in(str(error)), EXIT_DRAWING_FAILED)
 
 
 def _mode_description(target_repo: str, art_branch: str | None) -> str:
     if art_branch:
+        shown = redact_remote_url(target_repo)
         return (
-            f"Art commits will be added to branch '{art_branch}' of '{target_repo}'. "
+            f"Art commits will be added to branch '{art_branch}' of '{shown}'. "
             "Your current branch and uncommitted changes are restored afterwards."
         )
-    return f"Art commits will be added to the default branch of '{target_repo}'."
+    return f"Art commits will be added to the default branch of '{redact_remote_url(target_repo)}'."
 
 
 def _confirm() -> bool:

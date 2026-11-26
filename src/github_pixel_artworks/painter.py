@@ -14,7 +14,7 @@ from .art_repo import (
     Log,
     clone_url_target,
     default_branch,
-    has_unpushed_commits,
+    has_unpushed_or_unknown_commits,
     is_remote_url,
     is_tool_checkout,
     open_art_repo,
@@ -208,7 +208,7 @@ def _finish_url_clone(
 ) -> None:
     """Delete a URL-target clone, unless asked to keep it or it holds unpushed art."""
     path = Path(str(repo.working_tree_dir))
-    unpushed = _has_unpushed(repo)
+    unpushed = has_unpushed_or_unknown_commits(repo)
     repo.close()
     if keep or unpushed:
         reason = "as asked" if keep else "because it holds art commits that are not pushed yet"
@@ -220,13 +220,6 @@ def _finish_url_clone(
     remove_tree(path)
     remove_dir_if_empty(parent)
     log(f"Removed the clone {path}.")
-
-
-def _has_unpushed(repo: git.Repo) -> bool:
-    try:
-        return has_unpushed_commits(repo)
-    except GitCommandError:
-        return True  # when in doubt, keep the commits
 
 
 def _resolve_start_date(
