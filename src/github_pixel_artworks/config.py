@@ -135,6 +135,296 @@ ART_BRANCH_PREFIX = "artworks"
 YEAR_BRANCH_PLACEHOLDERS = (ART_BRANCH_PREFIX, "art", "dedicated-art")
 """``--art-branch`` values expanded to ``artworks-<year>`` when ``--year`` is given."""
 
+# Pattern generators ----------------------------------------------------------
+
+PATTERN_RANDOM = "random"
+PATTERN_MIRROR = "mirror"
+PATTERN_WAVE = "wave"
+PATTERN_TETRIS = "tetris"
+PATTERN_TEXT = "text"
+PATTERN_SPACE_INVADERS = "space_invaders"
+PATTERN_GAME_OF_LIFE = "game_of_life"
+PATTERN_HEARTS = "hearts"
+PATTERN_STRIPES = "stripes"
+PATTERN_ICONS_DUNGEON = "icons_dungeon"
+PATTERN_ICONS_NATURE = "icons_nature"
+PATTERN_NAMES = (
+    PATTERN_RANDOM,
+    PATTERN_MIRROR,
+    PATTERN_WAVE,
+    PATTERN_TETRIS,
+    PATTERN_TEXT,
+    PATTERN_SPACE_INVADERS,
+    PATTERN_GAME_OF_LIFE,
+    PATTERN_HEARTS,
+    PATTERN_STRIPES,
+    PATTERN_ICONS_DUNGEON,
+    PATTERN_ICONS_NATURE,
+)
+"""Themes offered by the CLI ``--pattern`` flag and the GUI pattern control."""
+
+PATTERN_DEFAULT_WIDTH = 20
+PATTERN_DEFAULT_DENSITY = 0.45
+"""Share of cells filled by the random and mirror patterns."""
+PATTERN_WAVE_PERIOD = 13
+"""Week period of the sine wave pattern."""
+PATTERN_TETRIS_MIN_HEIGHT = 1
+PATTERN_TETRIS_TYPICAL_HEIGHT = 4
+PATTERN_TETRIS_MAX_HEIGHT = 5
+"""Grounded stack height, in rows from Saturday: mostly 1-4, occasionally one taller."""
+PATTERN_TETRIS_DENSITY = 0.35
+"""Default Tetris density: the share of columns that belong to a stack cluster (sparse)."""
+PATTERN_TETRIS_CLUSTER_MIN = 3
+PATTERN_TETRIS_CLUSTER_MAX = 7
+"""Width in columns of one pile of pieces; gaps between piles come from density."""
+PATTERN_INVADER_GAP = 5
+"""Empty columns between Space Invader sprites."""
+PATTERN_LIFE_GENERATIONS = 12
+"""Conway generations to evolve the seeded soup before painting."""
+PATTERN_LIFE_DENSITY = 0.32
+"""Default fill chance of the Game of Life soup."""
+PATTERN_HEART_GAP = 3
+"""Empty columns between repeated 5-wide hearts."""
+PATTERN_ICON_GAP = 3
+"""Empty columns between stamped dungeon or nature icons."""
+PATTERN_TEXT_ALIGN_CENTER = "center"
+PATTERN_TEXT_ALIGN_LEFT = "left"
+PATTERN_TEXT_ALIGNS = (PATTERN_TEXT_ALIGN_CENTER, PATTERN_TEXT_ALIGN_LEFT)
+PATTERN_OVERFLOW_ERROR = "error"
+PATTERN_OVERFLOW_TRUNCATE = "truncate"
+PATTERN_OVERFLOWS = (PATTERN_OVERFLOW_ERROR, PATTERN_OVERFLOW_TRUNCATE)
+
+# 5x7 glyphs, one row per integer; bit 4 is the leftmost pixel.
+PATTERN_FONT_WIDTH = 5
+PATTERN_FONT_HEIGHT = 7
+PATTERN_FONT_GAP = 1
+PATTERN_FONT: dict[str, tuple[int, int, int, int, int, int, int]] = {
+    "A": (0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001),
+    "B": (0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110),
+    "C": (0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110),
+    "D": (0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110),
+    "E": (0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111),
+    "F": (0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000),
+    "G": (0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110),
+    "H": (0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001),
+    "I": (0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110),
+    "J": (0b00111, 0b00010, 0b00010, 0b00010, 0b00010, 0b10010, 0b01100),
+    "K": (0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001),
+    "L": (0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111),
+    "M": (0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001),
+    "N": (0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001),
+    "O": (0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110),
+    "P": (0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000),
+    "Q": (0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101),
+    "R": (0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001),
+    "S": (0b01110, 0b10001, 0b10000, 0b01110, 0b00001, 0b10001, 0b01110),
+    "T": (0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100),
+    "U": (0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110),
+    "V": (0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100),
+    "W": (0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b10101, 0b01010),
+    "X": (0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001),
+    "Y": (0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100),
+    "Z": (0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111),
+    "0": (0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110),
+    "1": (0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110),
+    "2": (0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111),
+    "3": (0b01110, 0b10001, 0b00001, 0b00110, 0b00001, 0b10001, 0b01110),
+    "4": (0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010),
+    "5": (0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110),
+    "6": (0b01110, 0b10001, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110),
+    "7": (0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000),
+    "8": (0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110),
+    "9": (0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b10001, 0b01110),
+    " ": (0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000),
+    ".": (0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100),
+    ",": (0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100, 0b01000),
+    "!": (0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b00100),
+    "?": (0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b00000, 0b00100),
+    "-": (0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000),
+    "'": (0b00100, 0b00100, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000),
+    ":": (0b00000, 0b00100, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000),
+    "/": (0b00001, 0b00010, 0b00010, 0b00100, 0b01000, 0b01000, 0b10000),
+}
+"""Uppercase letters, digits and a few punctuation marks for the text pattern."""
+
+# Each tetromino is the rotations of four (row, column) offsets from a bounding box.
+type _Cells = tuple[tuple[int, int], ...]
+TETROMINOES: tuple[tuple[_Cells, ...], ...] = (
+    (((0, 0), (0, 1), (0, 2), (0, 3)), ((0, 0), (1, 0), (2, 0), (3, 0))),  # I
+    (((0, 0), (0, 1), (1, 0), (1, 1)),),  # O
+    (  # T
+        ((0, 1), (1, 0), (1, 1), (1, 2)),
+        ((0, 0), (1, 0), (1, 1), (2, 0)),
+        ((0, 0), (0, 1), (0, 2), (1, 1)),
+        ((0, 1), (1, 0), (1, 1), (2, 1)),
+    ),
+    (((0, 1), (0, 2), (1, 0), (1, 1)), ((0, 0), (1, 0), (1, 1), (2, 1))),  # S
+    (((0, 0), (0, 1), (1, 1), (1, 2)), ((0, 1), (1, 0), (1, 1), (2, 0))),  # Z
+    (  # J
+        ((0, 0), (1, 0), (1, 1), (1, 2)),
+        ((0, 0), (0, 1), (1, 0), (2, 0)),
+        ((0, 0), (0, 1), (0, 2), (1, 2)),
+        ((0, 1), (1, 1), (2, 0), (2, 1)),
+    ),
+    (  # L
+        ((0, 2), (1, 0), (1, 1), (1, 2)),
+        ((0, 0), (1, 0), (2, 0), (2, 1)),
+        ((0, 0), (0, 1), (0, 2), (1, 0)),
+        ((0, 0), (0, 1), (1, 1), (2, 1)),
+    ),
+)
+"""The seven tetrominoes, each as the rotations used by the tetris pattern."""
+
+# Sprite rows use '.' for empty, '#' for the primary shade and 'o' for a second shade.
+type _Sprite = tuple[str, ...]
+PATTERN_INVADER_SPRITES: tuple[_Sprite, ...] = (
+    (  # crab
+        "..#.....#..",
+        "...#...#...",
+        "..#######..",
+        ".##o###o##.",
+        "###########",
+        "#.#.....#.#",
+        "...##.##...",
+    ),
+    (  # squid
+        "...##...",
+        "..####..",
+        ".######.",
+        "##o##o##",
+        "########",
+        ".#.##.#.",
+        "#.#..#.#",
+    ),
+    (  # octopus
+        "...######...",
+        ".##########.",
+        "############",
+        "###o.##.o###",
+        "############",
+        "..###..###..",
+        ".##..##..##.",
+    ),
+)
+"""Classic Space Invader silhouettes, each at most 7 rows tall."""
+
+PATTERN_HEART_SPRITE: _Sprite = (
+    ".#.#.",
+    "#####",
+    "#####",
+    ".###.",
+    "..#..",
+)
+"""A 5-wide heart that fits in the 7-row contribution grid."""
+
+# Original 7x7 1-bit icons for the icons_dungeon and icons_nature patterns.
+PATTERN_ICON_DUNGEON_SPRITES: tuple[_Sprite, ...] = (
+    (  # sword
+        "...#...",
+        "...#...",
+        "...#...",
+        "...#...",
+        ".#####.",
+        "...#...",
+        "..###..",
+    ),
+    (  # shield
+        ".#####.",
+        "#.....#",
+        "#.#.#.#",
+        "#.....#",
+        "#.....#",
+        ".#...#.",
+        "..###..",
+    ),
+    (  # skull
+        ".#####.",
+        "#.....#",
+        "#.#.#.#",
+        "##...##",
+        ".#####.",
+        ".#.#.#.",
+        "#.#.#.#",
+    ),
+    (  # potion
+        "..###..",
+        "...#...",
+        ".#####.",
+        "#.....#",
+        "#..#..#",
+        "#.....#",
+        ".#####.",
+    ),
+    (  # key
+        ".###...",
+        ".#.#...",
+        ".###...",
+        "..#....",
+        "..#.#..",
+        "..###..",
+        "....#..",
+    ),
+    (  # heart
+        ".##.##.",
+        "#######",
+        "#######",
+        ".#####.",
+        "..###..",
+        "...#...",
+        ".......",
+    ),
+)
+"""Hand-drawn dungeon icons: sword, shield, skull, potion, key, heart."""
+
+PATTERN_ICON_NATURE_SPRITES: tuple[_Sprite, ...] = (
+    (  # tree
+        "..###..",
+        ".#####.",
+        "#######",
+        ".#####.",
+        "..#.#..",
+        "...#...",
+        "...#...",
+    ),
+    (  # mushroom
+        "..###..",
+        ".#####.",
+        "#######",
+        "#.#.#.#",
+        ".#####.",
+        "...#...",
+        "..###..",
+    ),
+    (  # flower
+        "..#.#..",
+        ".#.#.#.",
+        "..###..",
+        ".#####.",
+        "..###..",
+        "...#...",
+        "...#...",
+    ),
+    (  # leaf
+        "....##.",
+        "...#.#.",
+        "..#..##",
+        ".#..#.#",
+        "#..##..",
+        ".###...",
+        "..#....",
+    ),
+    (  # sun
+        "#..#..#",
+        ".#...#.",
+        "#.###.#",
+        "..#.#..",
+        "#.###.#",
+        ".#...#.",
+        "#..#..#",
+    ),
+)
+"""Hand-drawn nature icons: tree, mushroom, flower, leaf, sun."""
+
 # CLI exit codes --------------------------------------------------------------
 
 EXIT_DRAWING_FAILED = 2

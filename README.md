@@ -113,13 +113,14 @@ uv run github-pixel-artworks -i data/heart.txt --year 2020 --target-repo https:/
 
 Main options:
 
-- `-i, --input`: the artwork file (required)
+- `-i, --input`: the artwork file (required unless `--pattern` is used)
 - `--year`, `--start-date` or `--auto-align`: where the art starts (one is required). `--year` starts on the first Sunday of that year, and `--offset-weeks` shifts it to the right.
 - `-t, --target-repo`: a repository you own, such as your profile README repository, as a GitHub URL (cloned into `target_cloned_repo/<repo>` at this project's root, see [Quick start](#quick-start)) or a local path. The empty commits go on its default branch. It defaults to the profile README repository of the detected GitHub user (see [Quick start](#quick-start)). The tool refuses to draw into a checkout of this project.
 - `--push`: push to `origin` afterwards, then delete the clone of a URL target
 - `--keep-clone`: keep the clone of a URL target in `target_cloned_repo/`
 - `--multiplier N`: commits per intensity level (default 1)
 - `--username NAME`: scale the intensity so level 4 matches your darkest existing day
+- `--pattern NAME`: generate a grid instead of `-i` (`random`, `mirror`, `wave`, `tetris`, `text`, `space_invaders`, `game_of_life`, `hearts`, `stripes`, `icons_dungeon`, or `icons_nature`). `--pattern-text` is required with `text`; `--seed N` reproduces a result.
 - `--dry-run`: preview only. With a target repository (given or detected) it also runs every check and reports how many commits are new.
 - `--yes`, `--force`: skip the confirmation, allow a dirty working tree
 - `--art-branch NAME` (advanced): commit on `NAME` instead, creating it if needed, then return to your branch with your uncommitted changes restored. The art only shows on your profile once that branch is merged into the default branch or made the default.
@@ -135,6 +136,22 @@ Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to
 ![GUI editor with data/space_invaders.txt loaded](images/gui_editor.png)
 
 ![GUI editor painting data/heart.txt with intensity levels 1 to 4](images/gui_levels.png)
+
+The **Pattern** bar above the grid can fill it with a generated pattern (random, a left-right mirror, a wave, stacked Tetris blocks, centred pixel-font text, Space Invaders, Game of Life, hearts, diagonal stripes, or themed icon sets (dungeon and nature)). You can still paint by hand afterwards, then **Generate Commits**.
+
+![GUI editor with a generated Tetris pattern](images/pattern_tetris.png)
+
+Preview a seeded Tetris board without committing:
+
+```bash
+uv run github-pixel-artworks --pattern tetris --seed 1 --year 2026 --dry-run
+```
+
+Draw text, such as a name, into your profile README repository:
+
+```bash
+uv run github-pixel-artworks --pattern text --pattern-text SIMONE --year 2026 --push
+```
 
 ## Results
 
@@ -160,6 +177,7 @@ The package is organised as:
 - `art_repo.py`: finding, cloning a URL into `target_cloned_repo/`, pushing and deleting the target repository
 - `identity.py`: the git identity the commits are made with
 - `github.py`: usernames and their detection, the contribution calendar, remote URLs, and the email and fork checks
+- `patterns.py`: generated grids (random, mirror, wave, tetris, text, space_invaders, game_of_life, hearts, stripes, icons_dungeon, icons_nature) used by the CLI and GUI
 - `painter.py`: `apply_drawing`, which creates the commits
 - `cli.py` and `gui.py`: the two front ends
 
