@@ -150,9 +150,15 @@ PATTERN_DEFAULT_DENSITY = 0.45
 """Share of cells filled by the random and mirror patterns."""
 PATTERN_WAVE_PERIOD = 13
 """Week period of the sine wave pattern."""
-PATTERN_TETRIS_MIN_HEIGHT = 2
-PATTERN_TETRIS_MAX_HEIGHT = 6
-"""Grounded stack height, in rows from Saturday, for a mid-game Tetris skyline."""
+PATTERN_TETRIS_MIN_HEIGHT = 1
+PATTERN_TETRIS_TYPICAL_HEIGHT = 4
+PATTERN_TETRIS_MAX_HEIGHT = 5
+"""Grounded stack height, in rows from Saturday: mostly 1-4, occasionally one taller."""
+PATTERN_TETRIS_DENSITY = 0.35
+"""Default Tetris density: the share of columns that belong to a stack cluster (sparse)."""
+PATTERN_TETRIS_CLUSTER_MIN = 3
+PATTERN_TETRIS_CLUSTER_MAX = 7
+"""Width in columns of one pile of pieces; gaps between piles come from density."""
 PATTERN_TEXT_ALIGN_CENTER = "center"
 PATTERN_TEXT_ALIGN_LEFT = "left"
 PATTERN_TEXT_ALIGNS = (PATTERN_TEXT_ALIGN_CENTER, PATTERN_TEXT_ALIGN_LEFT)

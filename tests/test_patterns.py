@@ -13,6 +13,7 @@ from github_pixel_artworks.config import (
     PATTERN_OVERFLOW_TRUNCATE,
     PATTERN_RANDOM,
     PATTERN_TETRIS,
+    PATTERN_TETRIS_DENSITY,
     PATTERN_TETRIS_MAX_HEIGHT,
     PATTERN_TETRIS_MIN_HEIGHT,
     PATTERN_TEXT,
@@ -137,8 +138,28 @@ class TestTetris:
             heights = [height for height in _grounded_heights(grid) if height]
             assert heights
             assert max(heights) - min(heights) >= 2
-            assert min(heights) >= 1
+            assert min(heights) >= PATTERN_TETRIS_MIN_HEIGHT
             assert max(heights) <= PATTERN_TETRIS_MAX_HEIGHT
+
+    def test_the_default_board_is_sparse(self) -> None:
+        for width in (20, 52):
+            for seed in (1, 11, 29, 42, 99):
+                grid = generate(PATTERN_TETRIS, width=width, seed=seed)
+                pieces = len(_same_shade_groups(grid))
+                filled = pieces * 4
+                cells = DAYS_PER_WEEK * width
+                assert 0 < filled / cells <= 0.28
+                # Roughly a piece every three or four weeks, plus a falling one.
+                assert 1 <= pieces <= max(6, width // 2)
+                if width >= 20:
+                    assert _longest_empty_run(_grounded_heights(grid)) >= 2
+
+    def test_a_higher_density_places_more_pieces(self) -> None:
+        default = generate(PATTERN_TETRIS, width=52, seed=7)
+        sparse = generate(PATTERN_TETRIS, width=52, seed=7, density=PATTERN_TETRIS_DENSITY)
+        dense = generate(PATTERN_TETRIS, width=52, seed=7, density=1.0)
+        assert default == sparse
+        assert len(_same_shade_groups(dense)) > len(_same_shade_groups(sparse))
 
 
 class TestText:
@@ -265,3 +286,14 @@ def _floating_cells(grid: list[list[int]]) -> set[tuple[int, int]]:
             continue
         floating.update(cells)
     return floating
+
+
+def _longest_empty_run(heights: list[int]) -> int:
+    longest = current = 0
+    for height in heights:
+        if height == 0:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest

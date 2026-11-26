@@ -22,8 +22,12 @@ from .config import (
     PATTERN_OVERFLOWS,
     PATTERN_RANDOM,
     PATTERN_TETRIS,
+    PATTERN_TETRIS_CLUSTER_MAX,
+    PATTERN_TETRIS_CLUSTER_MIN,
+    PATTERN_TETRIS_DENSITY,
     PATTERN_TETRIS_MAX_HEIGHT,
     PATTERN_TETRIS_MIN_HEIGHT,
+    PATTERN_TETRIS_TYPICAL_HEIGHT,
     PATTERN_TEXT,
     PATTERN_TEXT_ALIGN_CENTER,
     PATTERN_TEXT_ALIGN_LEFT,
@@ -44,7 +48,7 @@ def generate(
     seed: int | None = None,
     text: str = "",
     align: str = PATTERN_TEXT_ALIGN_CENTER,
-    density: float = PATTERN_DEFAULT_DENSITY,
+    density: float | None = None,
     overflow: str = PATTERN_OVERFLOW_ERROR,
 ) -> Grid:
     """Return a ``DAYS_PER_WEEK`` by ``width`` grid for the named pattern.
@@ -53,6 +57,9 @@ def generate(
     pattern; ``align`` is ``center`` or ``left`` within ``width``. If the text
     is wider than ``width`` (or ``MAX_WEEKS`` when width is omitted),
     ``overflow`` is ``error`` or ``truncate`` (whole characters only).
+    ``density`` is the fill chance for random and mirror (default
+    ``PATTERN_DEFAULT_DENSITY``) and, for tetris, the share of columns in
+    a stack cluster (default ``PATTERN_TETRIS_DENSITY``, which is sparse).
 
     Raises:
         ValueError: for an unknown name, a bad width, density, align or
@@ -61,6 +68,8 @@ def generate(
     key = name.strip().lower()
     if key not in GENERATORS:
         raise ValueError(f"Unknown pattern {name!r}. Choose one of: {', '.join(PATTERN_NAMES)}.")
+    if density is None:
+        density = PATTERN_TETRIS_DENSITY if key == PATTERN_TETRIS else PATTERN_DEFAULT_DENSITY
     if not 0 <= density <= 1:
         raise ValueError(f"density must be between 0 and 1 (got {density}).")
     if overflow not in PATTERN_OVERFLOWS:
@@ -142,18 +151,19 @@ def _wave(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
     return grid
 
 
-def _tetris(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
-    """Stack tetrominoes into a mid-game board with a ragged skyline.
+def _tetris(*, width: int | None, rng: random.Random, density: float, **_extra: object) -> Grid:
+    """Stack a few tetrominoes into sparse piles with gaps between them.
 
     Pieces fall toward Saturday (the last row). Each piece is one shade,
-    chosen so it differs from any orthogonally adjacent piece. The stack
-    stays between ``PATTERN_TETRIS_MIN_HEIGHT`` and
-    ``PATTERN_TETRIS_MAX_HEIGHT`` rows so the top is uneven, not a full
-    board. A falling piece is added above the stack when there is room.
+    chosen so it differs from any orthogonally adjacent piece. ``density``
+    is the share of columns that belong to a pile; the default is sparse,
+    with stacks mostly ``PATTERN_TETRIS_MIN_HEIGHT`` to
+    ``PATTERN_TETRIS_TYPICAL_HEIGHT`` rows tall. A falling piece is added
+    above the board when there is room.
     """
     columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
     grid = _blank(columns)
-    targets = _skyline(columns, rng)
+    targets = _skyline(columns, rng, density)
     for _ in range(columns * DAYS_PER_WEEK):  # more than enough; we stop when nothing fits
         if not _drop_piece(grid, rng, max_heights=targets):
             break
@@ -161,21 +171,75 @@ def _tetris(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
     return grid
 
 
-def _skyline(columns: int, rng: random.Random) -> list[int]:
-    """Target stack height for each column, ragged between the allowed bounds."""
-    low, high = PATTERN_TETRIS_MIN_HEIGHT, PATTERN_TETRIS_MAX_HEIGHT
-    height = rng.randint(low, high)
-    targets: list[int] = []
-    for _ in range(columns):
-        height = max(low, min(high, height + rng.choice((-2, -1, -1, 0, 0, 0, 1, 1, 2))))
-        targets.append(height)
-    if columns >= 3 and max(targets) - min(targets) < 2:
-        index = rng.randrange(columns)
-        if targets[index] <= (low + high) // 2:
-            targets[index] = min(high, targets[index] + 2)
-        else:
-            targets[index] = max(low, targets[index] - 2)
+def _skyline(columns: int, rng: random.Random, density: float) -> list[int]:
+    """Target heights: short clusters separated by empty stretches."""
+    targets = [0] * columns
+    if density <= 0:
+        return targets
+    occupied = max(1, min(columns, round(columns * density)))
+    cluster_count = _cluster_count(occupied)
+    clusters = _split_total(occupied, cluster_count, rng, min_size=1)
+    gaps = _split_total(columns - occupied, cluster_count + 1, rng, min_size=0)
+    column = 0
+    for index, size in enumerate(clusters):
+        column += gaps[index]
+        targets[column : column + size] = _cluster_heights(size, rng)
+        column += size
+    _ensure_height_variation(targets, rng)
     return targets
+
+
+def _cluster_count(occupied: int) -> int:
+    typical = (PATTERN_TETRIS_CLUSTER_MIN + PATTERN_TETRIS_CLUSTER_MAX) // 2
+    return max(1, min(occupied, (occupied + typical - 1) // typical))
+
+
+def _split_total(total: int, parts: int, rng: random.Random, *, min_size: int) -> list[int]:
+    """Split ``total`` into ``parts`` integers, each at least ``min_size`` when possible."""
+    if parts <= 0:
+        return []
+    if total <= 0:
+        return [0] * parts
+    floor = min(min_size, total // parts)
+    sizes = [floor] * parts
+    for _ in range(total - floor * parts):
+        sizes[rng.randrange(parts)] += 1
+    return sizes
+
+
+def _cluster_heights(size: int, rng: random.Random) -> list[int]:
+    low, typical, high = (
+        PATTERN_TETRIS_MIN_HEIGHT,
+        PATTERN_TETRIS_TYPICAL_HEIGHT,
+        PATTERN_TETRIS_MAX_HEIGHT,
+    )
+    height = rng.randint(low, typical)
+    heights: list[int] = []
+    for _ in range(size):
+        height += rng.choice((-2, -1, -1, 0, 0, 0, 1, 1, 2))
+        if height < low:
+            height = low
+        elif height > typical:
+            height = high if high > typical and rng.random() < 0.25 else typical
+        heights.append(height)
+    if size >= 3:
+        _ensure_height_variation(heights, rng)
+    return heights
+
+
+def _ensure_height_variation(heights: list[int], rng: random.Random) -> None:
+    """Nudge a filled column so the skyline is not flat, when there is room."""
+    filled = [index for index, height in enumerate(heights) if height]
+    if len(filled) < 2:
+        return
+    values = [heights[index] for index in filled]
+    if max(values) - min(values) >= 2:
+        return
+    index = filled[rng.randrange(len(filled))]
+    if heights[index] <= PATTERN_TETRIS_TYPICAL_HEIGHT - 1:
+        heights[index] = min(PATTERN_TETRIS_MAX_HEIGHT, heights[index] + 2)
+    else:
+        heights[index] = max(PATTERN_TETRIS_MIN_HEIGHT, heights[index] - 2)
 
 
 def _drop_piece(

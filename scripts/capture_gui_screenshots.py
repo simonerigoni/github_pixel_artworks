@@ -163,7 +163,7 @@ def capture_readme_shots() -> list[Path]:
 
     root, app = _new_app()
     try:
-        _generate_pattern(app, "tetris", width=52, seed=29)
+        _generate_pattern(app, "tetris", width=52, seed=1)
         grab(root, PATTERN_TETRIS_SHOT)
     finally:
         root.destroy()
@@ -174,7 +174,7 @@ def capture_pattern_previews(out_dir: Path) -> list[Path]:
     """Capture Tetris, text and mirror patterns as they appear in the editor."""
     out_dir.mkdir(parents=True, exist_ok=True)
     shots = [
-        (out_dir / "pattern_tetris.png", "tetris", 52, 29, ""),
+        (out_dir / "pattern_tetris.png", "tetris", 52, 1, ""),
         (out_dir / "pattern_text.png", "text", 10, 1, "SIMONE"),
         (out_dir / "pattern_mirror.png", "mirror", 36, 7, ""),
     ]
