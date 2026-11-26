@@ -6,7 +6,15 @@
 
 The recommended target is your profile README repository, `<username>/<username>`, but any repository you own works. The tool clones it into `./<username>` and adds **empty** commits on its default branch, so no file in it changes.
 
-`--target-repo` is optional when the tool can find your GitHub username. It checks, in order, `git config --global github.user`, a no-reply `user.email` (`<id>+<username>@users.noreply.github.com`) and, if the GitHub CLI is installed, `gh api user`, and says which one it used. To set it once:
+`--target-repo` is optional when the tool can find your GitHub username. It reads the git settings in effect where you run it (the repository's, your global and system ones) and stops at the first hit, saying which one it used:
+
+1. `git config github.user`
+2. a no-reply `user.email` (`<id>+<username>@users.noreply.github.com`)
+3. `user.name`, if it looks like a GitHub username (1 to 39 letters, digits or single inner hyphens, no spaces). This is a guess, so it says so.
+4. GitHub's public commit search for your `user.email`: one unauthenticated request with a short timeout. It finds you only if a public commit of yours uses that address, and any failure or rate limit is skipped silently.
+5. `gh api user`, if the GitHub CLI is installed
+
+To be sure, set it once:
 
 ```bash
 git config --global github.user <username>
