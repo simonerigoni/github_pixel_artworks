@@ -2,45 +2,6 @@
 
 [![CI](https://github.com/simonerigoni/github_pixel_artworks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/simonerigoni/github_pixel_artworks/actions/workflows/ci.yml?query=branch%3Amain) [![License](https://img.shields.io/github/license/simonerigoni/github_pixel_artworks)](LICENSE.md) [![Python](https://img.shields.io/badge/python-3.15-blue)](pyproject.toml) [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv) [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit) [![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://renovatebot.com)
 
-## Quick start
-
-The recommended target is your profile README repository, `<username>/<username>`, but any repository you own works. The tool clones a URL target into `target_cloned_repo/<repo>` at the root of this project (the folder that contains `pyproject.toml`, found from the package location, so not from the working directory) and adds **empty** commits on its default branch, so no file in it changes. Once the art is pushed, that clone is deleted. The folder is listed in `.gitignore`.
-
-`--target-repo` is optional when the tool can find your GitHub username. It reads the git settings in effect where you run it (the repository's, your global and system ones) and stops at the first hit, saying which one it used:
-
-1. `git config github.user`
-2. a no-reply `user.email` (`<id>+<username>@users.noreply.github.com`)
-3. `user.name`, if it looks like a GitHub username (1 to 39 letters, digits or single inner hyphens, no spaces). This is a guess, so it says so.
-4. GitHub's public commit search for your `user.email`: one unauthenticated request with a short timeout. It finds you only if a public commit of yours uses that address, and any failure or rate limit is skipped silently.
-5. `gh api user`, if the GitHub CLI is installed
-
-To be sure, set it once:
-
-```bash
-git config --global github.user <username>
-```
-
-1. Preview where the art lands and how many commits it adds (add `--target-repo https://github.com/<username>/<username>` if your username is not detected):
-
-   ```bash
-   uv sync
-   uv run github-pixel-artworks -i data/heart.txt --year 2025 --dry-run
-   ```
-
-2. Draw it and push it, and the art appears on your profile in that year:
-
-   ```bash
-   uv run github-pixel-artworks -i data/heart.txt --year 2025 --push
-   ```
-
-3. Running the same drawing again adds nothing, and a higher `--multiplier` adds only the difference.
-
-Without `--push`, the commits exist only in that clone, so it is kept: the tool prints its path and the `git -C <path> push` command to publish them. If drawing or pushing fails, the clone is kept only when it holds unpushed art commits (its path is printed); otherwise it is deleted. `--keep-clone` always keeps it. A local path given as the target is never deleted. If `target_cloned_repo/<repo>` is already there from an earlier run, the tool reuses it when it is a clone of the same URL: a clean clone is updated from the remote; a clone that still holds unpushed commits is left as it is. If the folder is something else, or has uncommitted changes, the tool stops and asks you to move or delete it.
-
-The commits are authored with the git identity (`user.name` and `user.email`) of the target repository if it has its own, otherwise the one in effect where you run the tool: this checkout's local config, then your global and system config. If none is set, the tool stops before cloning anything and tells you to run `git config --global user.email <an email on your GitHub account>` (and `user.name`). The email must be connected to your GitHub account; the tool warns when it can tell that is not the case.
-
-Trade-offs: the art adds extra empty commits to that repository's log (one per shade step of each pixel, from dozens to a few hundred), and deleting the repository (or rewriting its history) removes the art from your profile.
-
 ## Introduction
 
 A tool that draws pixel art on your GitHub contribution graph. You design a 7-row artwork, one row per weekday and one column per week. The tool then creates empty, backdated commits so that each pixel shows up as a green square on the right day. It comes with a command line interface and a small Tkinter editor.
@@ -93,29 +54,55 @@ It is also possible to run manually the individual tests:
 
 ## Running the code
 
+The recommended target is your profile README repository, `<username>/<username>`, but any repository you own works. The tool clones a URL target into `target_cloned_repo/<repo>` at the root of this project (the folder that contains `pyproject.toml`, found from the package location, so not from the working directory) and adds **empty** commits on its default branch, so no file in it changes. Once the art is pushed, that clone is deleted. The folder is listed in `.gitignore`.
+
+`--target-repo` is optional when the tool can find your GitHub username. It reads the git settings in effect where you run it (the repository's, your global and system ones) and stops at the first hit, saying which one it used:
+
+1. `git config github.user`
+2. a no-reply `user.email` (`<id>+<username>@users.noreply.github.com`)
+3. `user.name`, if it looks like a GitHub username (1 to 39 letters, digits or single inner hyphens, no spaces). This is a guess, so it says so.
+4. GitHub's public commit search for your `user.email`: one unauthenticated request with a short timeout. It finds you only if a public commit of yours uses that address, and any failure or rate limit is skipped silently.
+5. `gh api user`, if the GitHub CLI is installed
+
+To be sure, set it once:
+
+```bash
+git config --global github.user <username>
+```
+
+The commits are authored with the git identity (`user.name` and `user.email`) of the target repository if it has its own, otherwise the one in effect where you run the tool: this checkout's local config, then your global and system config. If none is set, the tool stops before cloning anything and tells you to run `git config --global user.email <an email on your GitHub account>` (and `user.name`). The email must be connected to your GitHub account; the tool warns when it can tell that is not the case.
+
+Trade-offs: the art adds extra empty commits to that repository's log (one per shade step of each pixel, from dozens to a few hundred), and deleting the repository (or rewriting its history) removes the art from your profile.
+
 ### CLI
 
 ```bash
 uv run github-pixel-artworks --help
 ```
 
-Preview where `data/heart.txt` would land in 2020 without committing anything:
+After [`uv sync`](#local-configuration):
 
-```bash
-uv run github-pixel-artworks -i data/heart.txt --year 2020 --dry-run
-```
+1. Preview where the art lands and how many commits it adds (add `--target-repo https://github.com/<username>/<username>` if your username is not detected):
 
-Draw it into your profile README repository and push it:
+   ```bash
+   uv run github-pixel-artworks -i data/heart.txt --year 2025 --dry-run
+   ```
 
-```bash
-uv run github-pixel-artworks -i data/heart.txt --year 2020 --target-repo https://github.com/<username>/<username> --push
-```
+2. Draw it and push it, and the art appears on your profile in that year:
+
+   ```bash
+   uv run github-pixel-artworks -i data/heart.txt --year 2025 --push
+   ```
+
+3. Running the same drawing again adds nothing, and a higher `--multiplier` adds only the difference.
+
+Without `--push`, the commits exist only in that clone, so it is kept: the tool prints its path and the `git -C <path> push` command to publish them. If drawing or pushing fails, the clone is kept only when it holds unpushed art commits (its path is printed); otherwise it is deleted. `--keep-clone` always keeps it. A local path given as the target is never deleted. If `target_cloned_repo/<repo>` is already there from an earlier run, the tool reuses it when it is a clone of the same URL: a clean clone is updated from the remote; a clone that still holds unpushed commits is left as it is. If the folder is something else, or has uncommitted changes, the tool stops and asks you to move or delete it.
 
 Main options:
 
 - `-i, --input`: the artwork file (required unless `--pattern` is used)
 - `--year`, `--start-date` or `--auto-align`: where the art starts (one is required). `--year` starts on the first Sunday of that year, and `--offset-weeks` shifts it to the right.
-- `-t, --target-repo`: a repository you own, such as your profile README repository, as a GitHub URL (cloned into `target_cloned_repo/<repo>` at this project's root, see [Quick start](#quick-start)) or a local path. The empty commits go on its default branch. It defaults to the profile README repository of the detected GitHub user (see [Quick start](#quick-start)). The tool refuses to draw into a checkout of this project.
+- `-t, --target-repo`: a repository you own, such as your profile README repository, as a GitHub URL (cloned into `target_cloned_repo/<repo>` at this project's root, see above) or a local path. The empty commits go on its default branch. It defaults to the profile README repository of the detected GitHub user (see above). The tool refuses to draw into a checkout of this project.
 - `--push`: push to `origin` afterwards, then delete the clone of a URL target
 - `--keep-clone`: keep the clone of a URL target in `target_cloned_repo/`
 - `--multiplier N`: commits per intensity level (default 1)
@@ -131,7 +118,7 @@ Main options:
 uv run github-pixel-artworks-gui
 ```
 
-Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. The target repository is pre-filled with your profile README repository when your GitHub username is detected (see [Quick start](#quick-start)); otherwise enter one, for example `https://github.com/<username>/<username>`. **Dry run** reports how many commits are new, **Generate Commits** adds them on the default branch, and **Push to GitHub** pushes them and then deletes the clone of a URL target in `target_cloned_repo/` (kept until then, with its path in the log). An art branch is available as an advanced option.
+Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. The target repository is pre-filled with your profile README repository when your GitHub username is detected (see above); otherwise enter one, for example `https://github.com/<username>/<username>`. **Dry run** reports how many commits are new, **Generate Commits** adds them on the default branch, and **Push to GitHub** pushes them and then deletes the clone of a URL target in `target_cloned_repo/` (kept until then, with its path in the log). An art branch is available as an advanced option.
 
 ![GUI editor with data/space_invaders.txt loaded](images/gui_editor.png)
 
