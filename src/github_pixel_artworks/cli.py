@@ -34,8 +34,9 @@ def perform_pixel_art(
 ) -> None:
     """Preview the artwork, ask for confirmation unless ``yes``, then draw it.
 
-    ``target_repo`` is the art repository (a path or URL); only a dry run works
-    without one. Exits with ``EXIT_BAD_ARGUMENT`` when it is missing and with
+    ``target_repo`` is the art repository (a path or URL). A dry run without one
+    only prints the preview; with one it also checks the repository and reports
+    how many commits are new. Exits with ``EXIT_BAD_ARGUMENT`` when it is missing and with
     ``EXIT_DRAWING_FAILED`` if drawing fails.
     """
     if not grid or not grid[0]:
@@ -45,20 +46,21 @@ def perform_pixel_art(
     print("=== GitHub Pixel Art Preview ===")
     print(preview(grid, start_date, multiplier))
     print()
-    if dry_run:
+    if dry_run and not target_repo:
         print("Dry run complete. No commits were made.")
         return
     if not target_repo:
         _fail(
-            "--target-repo is required: the URL or path of the repository you created for "
-            "the art, e.g. https://github.com/<you>/pixel-art",
+            "--target-repo is required: the URL or path of a repository you own, e.g. your "
+            "profile README repository https://github.com/<username>/<username>",
             EXIT_BAD_ARGUMENT,
         )
 
-    print(_mode_description(target_repo, art_branch))
-    if not yes and not _confirm():
-        print("Aborted by user.")
-        return
+    if not dry_run:
+        print(_mode_description(target_repo, art_branch))
+        if not yes and not _confirm():
+            print("Aborted by user.")
+            return
 
     try:
         apply_drawing(
@@ -70,6 +72,7 @@ def perform_pixel_art(
             username=username,
             push=push,
             force=force,
+            dry_run=dry_run,
             log=print,
         )
     except Exception as error:  # report any failure as a CLI error
@@ -108,8 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="github-pixel-artworks",
         description="Draw pixel art on your GitHub contribution graph with backdated commits.",
-        epilog="Quick start: create an empty repository on GitHub, then run "
-        "-i ART --year YYYY --target-repo https://github.com/<you>/<repo> --push.",
+        epilog="Quick start: -i ART --year YYYY "
+        "--target-repo https://github.com/<username>/<username> --push",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -149,13 +152,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Commits per level, applied on top of --username scaling (default: 1).",
     )
 
-    target = parser.add_argument_group("the art repository")
+    target = parser.add_argument_group("the target repository")
     target.add_argument(
         "-t",
         "--target-repo",
-        help="Your own repository for the art: a GitHub URL such as "
-        "https://github.com/<you>/pixel-art (cloned into ./pixel-art) or a local path. "
-        "Commits go on its default branch. Required unless --dry-run.",
+        help="A repository you own, e.g. your profile README repository "
+        "https://github.com/<username>/<username>: a GitHub URL (cloned into ./<repo>) or a "
+        "local path. Empty commits go on its default branch. Required unless --dry-run.",
     )
     target.add_argument("--push", action="store_true", help="Push to origin after drawing.")
     target.add_argument(
@@ -168,7 +171,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--dry-run", action="store_true", help="Show the preview without committing."
+        "--dry-run",
+        action="store_true",
+        help="Show the preview without committing; with --target-repo, also check the "
+        "repository and count the commits that are new.",
     )
     parser.add_argument("-y", "--yes", action="store_true", help="Do not ask for confirmation.")
     parser.add_argument(

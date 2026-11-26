@@ -1,4 +1,4 @@
-"""The art repository: the user's own repo whose default branch receives the commits."""
+"""The target repository: a repo the user owns, such as their profile README repo."""
 
 from collections.abc import Callable
 from pathlib import Path

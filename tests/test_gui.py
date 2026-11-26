@@ -173,14 +173,14 @@ class TestGenerateAndPush:
     def test_the_art_branch_is_off_by_default(self, app: gui.PixelArtGUI) -> None:
         assert app.use_art_branch_var.get() is False
 
-    def test_generate_asks_for_the_art_repository_first(
+    def test_generate_asks_for_the_target_repository_first(
         self, app: gui.PixelArtGUI, answers: list[str]
     ) -> None:
         app.target_repo_var.set("  ")
 
         app._on_generate_clicked()
 
-        assert answers and "art repository" in answers[0]
+        assert answers and "target repository" in answers[0]
 
     def test_generate_draws_on_the_default_branch_and_push_publishes_it(
         self, app: gui.PixelArtGUI, answers: list[str], git_repo: git.Repo, tmp_path: Path
@@ -199,3 +199,19 @@ class TestGenerateAndPush:
         assert answers == []
         assert len(list(git_repo.iter_commits("main"))) == 1 + 2
         assert remote.heads.main.commit == git_repo.heads.main.commit
+
+    def test_dry_run_reports_the_plan_without_committing(
+        self, app: gui.PixelArtGUI, answers: list[str], git_repo: git.Repo
+    ) -> None:
+        head = git_repo.head.commit
+        app.target_repo_var.set(str(git_repo.working_tree_dir))
+        app.year_var.set(2026)
+        paint(app, 2, 0, 0)
+
+        app._on_generate_clicked(dry_run=True)
+        app._drain_queues()
+
+        assert answers == []
+        assert git_repo.head.commit == head
+        assert "Dry run: would create 2 commits" in app.log_text.get("1.0", tk.END)
+        assert str(app.push_button.cget("state")) == tk.DISABLED

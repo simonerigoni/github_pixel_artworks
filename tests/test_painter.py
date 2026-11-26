@@ -88,6 +88,50 @@ class TestDefaultBranch:
         assert art_commits(git_repo, "main") == []
 
 
+class TestEmptyCommits:
+    def test_art_commits_change_no_files_and_keep_staged_work(self, git_repo: git.Repo) -> None:
+        initial_tree = git_repo.head.commit.tree
+        root = root_of(git_repo)
+        (root / "source.py").write_text("print('staged work')\n", encoding="utf-8")
+        git_repo.index.add(["source.py"])
+
+        draw(git_repo, force=True)
+
+        assert {commit.tree for commit in art_commits(git_repo, "main")} == {initial_tree}
+        assert git_repo.git.diff("--cached", "--name-only") == "source.py"
+        assert (root / "source.py").read_text(encoding="utf-8") == "print('staged work')\n"
+
+
+class TestRerun:
+    def test_the_same_drawing_adds_nothing(self, git_repo: git.Repo) -> None:
+        draw(git_repo)
+        lines: list[str] = []
+
+        count = draw(git_repo, log=lines.append)
+
+        assert count == 0
+        assert len(art_commits(git_repo, "main")) == 2
+        assert any("2 already present" in line for line in lines)
+
+    def test_a_higher_multiplier_adds_only_the_difference(self, git_repo: git.Repo) -> None:
+        draw(git_repo)
+
+        count = draw(git_repo, multiplier=3)
+
+        assert count == 4
+        assert len(art_commits(git_repo, "main")) == 6
+
+    def test_dry_run_reports_the_plan_without_committing(self, git_repo: git.Repo) -> None:
+        head = git_repo.head.commit
+        lines: list[str] = []
+
+        count = draw(git_repo, dry_run=True, log=lines.append)
+
+        assert count == 2
+        assert git_repo.head.commit == head
+        assert any("Dry run" in line and "2 commits" in line for line in lines)
+
+
 class TestNewArtRepository:
     def test_clones_an_empty_repository_draws_and_pushes(
         self,
@@ -208,12 +252,13 @@ class TestArtBranch:
 
         assert any("default branch" in line for line in lines if line.startswith("Warning:"))
 
-    def test_rerun_adds_to_the_existing_branch(self, git_repo: git.Repo) -> None:
+    def test_rerun_on_the_same_branch_adds_nothing(self, git_repo: git.Repo) -> None:
         draw(git_repo, art_branch="artworks-2026")
 
-        draw(git_repo, art_branch="artworks-2026")
+        count = draw(git_repo, art_branch="artworks-2026")
 
-        assert len(art_commits(git_repo, "artworks-2026")) == 4
+        assert count == 0
+        assert len(art_commits(git_repo, "artworks-2026")) == 2
 
     def test_restores_branch_and_changes_when_drawing_fails(
         self, git_repo: git.Repo, monkeypatch: pytest.MonkeyPatch

@@ -50,7 +50,7 @@ class TestPerformPixelArt:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         perform_pixel_art(
-            target_repo=".",
+            target_repo=None,
             grid=TWO_PIXELS,
             start_date=datetime(2026, 1, 4),
             multiplier=2,
@@ -117,6 +117,12 @@ class TestArguments:
     ) -> None:
         assert exit_code_of(run_cli, "-i", SIMPLE, "--year", "2026", "-y") == EXIT_BAD_ARGUMENT
         assert "--target-repo" in capsys.readouterr().err
+
+    def test_dry_run_with_an_art_repository_checks_it_without_committing(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "-t", ART_REPO, "--dry-run")
+
+        assert received["dry_run"] is True
+        assert received["target_repo"] == ART_REPO
 
     def test_dry_run_needs_no_art_repository(
         self, run_cli, capsys: pytest.CaptureFixture[str]

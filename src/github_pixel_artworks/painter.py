@@ -1,7 +1,9 @@
 """Turn an artwork into backdated, empty git commits."""
 
 import os
-from datetime import datetime, timedelta
+from collections import Counter
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import git
@@ -14,6 +16,9 @@ from .github import commit_email_warning, fetch_is_fork, github_slug
 
 PROGRESS_EVERY = 10
 """Log a progress line every this many commits."""
+
+ART_MESSAGE_PREFIX = "pixel art "
+"""Start of every art commit message, which is also how earlier art is recognised."""
 
 _FILLED_PIXEL = "#"
 _EMPTY_PIXEL = "."
@@ -47,6 +52,7 @@ def apply_drawing(
     username: str | None = None,
     push: bool = False,
     force: bool = False,
+    dry_run: bool = False,
     log: Log = print,
 ) -> int:
     """Create the backdated commits that draw ``grid`` and return how many were made.
@@ -56,6 +62,13 @@ def apply_drawing(
     the first Sunday of ``year`` plus ``offset_weeks`` (at most ``MAX_WEEKS``;
     negative values reach into the previous year). Each pixel is committed
     ``level * multiplier`` times at 12:00 UTC on its day.
+
+    The commits are empty: they reuse the tip's tree, so no file, the index or
+    the working tree changes. Art commits already on the branch (recognised by
+    ``ART_MESSAGE_PREFIX`` and their UTC day) count towards each pixel, so
+    re-running a drawing adds nothing and a higher multiplier adds only the
+    difference. ``dry_run`` runs every check and reports that plan without
+    committing.
 
     By default the commits go on the repository's default branch, the only place
     GitHub counts them. A checkout of this tool is refused. With ``art_branch``
@@ -102,6 +115,15 @@ def apply_drawing(
     for warning in _profile_warnings(repo, username):
         log(f"Warning: {warning}")
 
+    if dry_run:
+        rev = art_branch if art_branch and art_branch in repo.heads else "HEAD"
+        plan = _plan(repo, rev, grid, start_date, multiplier)
+        log(
+            f"Dry run: would create {plan.new_commits} commits on '{branch}' "
+            f"({plan.present} already present). No commits were made."
+        )
+        return plan.new_commits
+
     original_ref = _current_ref(repo) if art_branch else None
     stashed = False
     try:
@@ -109,9 +131,13 @@ def apply_drawing(
             stashed = _stash_changes(repo, art_branch, log)
             _switch_to_branch(repo, art_branch, log)
         _ensure_clean(repo, force)
-        log(f"Creating backdated commits on '{branch}'...")
-        total = _commit_artwork(repo, grid, start_date, multiplier, log)
-        log(f"Created {total} backdated commits on branch {branch}.")
+        plan = _plan(repo, "HEAD", grid, start_date, multiplier)
+        log(f"{plan.new_commits} commits to create, {plan.present} already present.")
+        total = _commit_artwork(repo, branch, plan, log)
+        if total:
+            log(f"Created {total} backdated commits on branch {branch}.")
+        else:
+            log(f"Nothing new: the art is already on branch {branch}.")
     finally:
         if original_ref is not None:
             _restore(repo, original_ref, stashed, log)
@@ -149,8 +175,9 @@ def _refuse_tool_checkout(root: Path) -> None:
     if is_tool_checkout(root):
         raise RuntimeError(
             f"{root} is a github-pixel-artworks checkout. Art drawn here would not show on "
-            "your profile and would fill the tool's history with fake commits. Create an "
-            "empty repository on GitHub (for example <you>/pixel-art) and pass it as the target."
+            "your profile and would fill the tool's history with fake commits. Use a "
+            "repository you own instead, e.g. your profile README repository "
+            "https://github.com/<username>/<username>."
         )
 
 
@@ -178,7 +205,7 @@ def _profile_warnings(repo: git.Repo, username: str | None) -> list[str]:
     if slug and fetch_is_fork(*slug):
         warnings.append(
             f"{slug[0]}/{slug[1]} is a fork, and GitHub does not count commits made in "
-            "forks. Create a new repository for the art instead."
+            "forks. Use a repository you own, e.g. your profile README repository."
         )
     return warnings
 
@@ -240,29 +267,88 @@ def _restore(repo: git.Repo, original_ref: str, stashed: bool, log: Log) -> None
             log(f"Warning: could not pop the stash (run `git stash pop` manually): {error}")
 
 
-def _commit_artwork(
-    repo: git.Repo, grid: Grid, start_date: datetime, multiplier: int, log: Log
-) -> int:
-    """Create every pixel's commits, column by column; return the number created."""
-    total = 0
+@dataclass(frozen=True)
+class _Pixel:
+    day: int
+    week: int
+    when: datetime
+    wanted: int
+    present: int
+
+
+@dataclass(frozen=True)
+class _Plan:
+    pixels: list[_Pixel]
+
+    @property
+    def present(self) -> int:
+        return sum(min(pixel.present, pixel.wanted) for pixel in self.pixels)
+
+    @property
+    def new_commits(self) -> int:
+        return sum(max(0, pixel.wanted - pixel.present) for pixel in self.pixels)
+
+
+def _plan(repo: git.Repo, rev: str, grid: Grid, start_date: datetime, multiplier: int) -> _Plan:
+    """Pair every lit pixel with the art commits ``rev`` already has on its day."""
+    present = _art_commits_per_day(repo, rev)
+    pixels = []
     for week in range(len(grid[0])):
         for day in range(DAYS_PER_WEEK):
-            commits = grid[day][week] * multiplier
-            when = pixel_timestamp(start_date, week, day)
-            for index in range(1, commits + 1):
-                _commit_pixel(repo, when, f"pixel art ({day},{week}) [{index}/{commits}]")
-                total += 1
-                if total % PROGRESS_EVERY == 0:
-                    log(f"  ... {total} commits so far")
+            if wanted := grid[day][week] * multiplier:
+                when = pixel_timestamp(start_date, week, day)
+                pixels.append(_Pixel(day, week, when, wanted, present[when.date()]))
+    return _Plan(pixels)
+
+
+def _art_commits_per_day(repo: git.Repo, rev: str) -> Counter[date]:
+    """Count the art commits reachable from ``rev`` by UTC day (none on an unborn branch)."""
+    if not repo.head.is_valid() and rev == "HEAD":
+        return Counter()
+    log = repo.git.log("--format=%at %s", rev)
+    days: Counter[date] = Counter()
+    for line in log.splitlines():
+        timestamp, _, subject = line.partition(" ")
+        if subject.startswith(ART_MESSAGE_PREFIX):
+            days[datetime.fromtimestamp(int(timestamp), UTC).date()] += 1
+    return days
+
+
+def _commit_artwork(repo: git.Repo, branch: str, plan: _Plan, log: Log) -> int:
+    """Create the commits ``plan`` still needs on top of HEAD; return how many.
+
+    ``branch`` only moves once every commit exists, so a failure leaves it untouched.
+    """
+    tip = repo.head.commit.hexsha if repo.head.is_valid() else None
+    tree = repo.head.commit.tree.hexsha if tip else _empty_tree(repo)
+    total = 0
+    for pixel in plan.pixels:
+        for index in range(pixel.present + 1, pixel.wanted + 1):
+            message = f"{ART_MESSAGE_PREFIX}({pixel.day},{pixel.week}) [{index}/{pixel.wanted}]"
+            tip = _commit_pixel(repo, tree, tip, pixel.when, message)
+            total += 1
+            if total % PROGRESS_EVERY == 0:
+                log(f"  ... {total} commits so far")
+    if total and tip:
+        repo.git.update_ref("-m", "github-pixel-artworks", f"refs/heads/{branch}", tip)
     return total
 
 
-def _commit_pixel(repo: git.Repo, when: datetime, message: str) -> None:
-    """Create one empty commit authored and committed at ``when``.
+def _empty_tree(repo: git.Repo) -> str:
+    """Write git's empty tree and return its id, for the first commit of an empty repo."""
+    return repo.git.hash_object("-t", "tree", "-w", os.devnull)
 
-    ``when`` is timezone-aware, so git never applies the local timezone. Hooks are
-    skipped: the target repo's pre-commit checks would otherwise run per pixel.
+
+def _commit_pixel(
+    repo: git.Repo, tree: str, parent: str | None, when: datetime, message: str
+) -> str:
+    """Create one empty commit of ``tree`` on ``parent``, dated ``when``; return its id.
+
+    ``git commit-tree`` never reads the index, so staged work stays out of the art,
+    and it runs no hooks. ``when`` is timezone-aware, so git never applies the
+    local timezone.
     """
     stamp = when.isoformat()
     env = {**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
-    repo.git.commit("--allow-empty", "--no-verify", "-m", message, env=env)
+    parents = ["-p", parent] if parent else []
+    return repo.git.commit_tree(tree, *parents, "-m", message, env=env)

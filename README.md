@@ -4,23 +4,26 @@
 
 ## Quick start
 
-1. Create an empty repository on GitHub for the art, for example `<you>/pixel-art`. Use a new repository, not a fork and not a clone of this project.
-2. Draw an artwork into it. The tool clones the repository into `./pixel-art` and commits on its default branch:
+The recommended target is your profile README repository, `<username>/<username>`, but any repository you own works. The tool clones it into `./<username>` and adds **empty** commits on its default branch, so no file in it changes.
+
+1. Preview where the art lands and how many commits it adds:
 
    ```bash
    uv sync
-   uv run github-pixel-artworks -i data/heart.txt --year 2025 --target-repo https://github.com/<you>/pixel-art
+   uv run github-pixel-artworks -i data/heart.txt --year 2025 --target-repo https://github.com/<username>/<username> --dry-run
    ```
 
-3. Push, and the art appears on your profile in that year:
+2. Draw it and push it, and the art appears on your profile in that year:
 
    ```bash
-   git -C pixel-art push -u origin main
+   uv run github-pixel-artworks -i data/heart.txt --year 2025 --target-repo https://github.com/<username>/<username> --push
    ```
 
-   Adding `--push` to step 2 does the same.
+3. Running the same drawing again adds nothing, and a higher `--multiplier` adds only the difference.
 
 The commits must use an email address connected to your GitHub account (`git config user.email`). The tool warns when it can tell that is not the case.
+
+Trade-offs: the art adds extra empty commits to that repository's log (one per shade step of each pixel, from dozens to a few hundred), and deleting the repository (or rewriting its history) removes the art from your profile.
 
 ## Introduction
 
@@ -86,21 +89,22 @@ Preview where `data/heart.txt` would land in 2020 without committing anything:
 uv run github-pixel-artworks -i data/heart.txt --year 2020 --dry-run
 ```
 
-Draw it into your art repository and push it:
+Draw it into your profile README repository and push it:
 
 ```bash
-uv run github-pixel-artworks -i data/heart.txt --year 2020 --target-repo https://github.com/<you>/pixel-art --push
+uv run github-pixel-artworks -i data/heart.txt --year 2020 --target-repo https://github.com/<username>/<username> --push
 ```
 
 Main options:
 
 - `-i, --input`: the artwork file (required)
 - `--year`, `--start-date` or `--auto-align`: where the art starts (one is required). `--year` starts on the first Sunday of that year, and `--offset-weeks` shifts it to the right.
-- `-t, --target-repo`: your art repository, as a GitHub URL (cloned into a folder of the same name, or reused if it is already there) or a local path. The commits go on its default branch. The tool refuses to draw into a checkout of this project.
+- `-t, --target-repo`: a repository you own, such as your profile README repository, as a GitHub URL (cloned into a folder of the same name, or reused if it is already there) or a local path. The empty commits go on its default branch. The tool refuses to draw into a checkout of this project.
 - `--push`: push to `origin` afterwards
 - `--multiplier N`: commits per intensity level (default 1)
 - `--username NAME`: scale the intensity so level 4 matches your darkest existing day
-- `--dry-run`, `--yes`, `--force`: preview only, skip the confirmation, allow a dirty working tree
+- `--dry-run`: preview only. With `--target-repo` it also runs every check and reports how many commits are new.
+- `--yes`, `--force`: skip the confirmation, allow a dirty working tree
 - `--art-branch NAME` (advanced): commit on `NAME` instead, creating it if needed, then return to your branch with your uncommitted changes restored. The art only shows on your profile once that branch is merged into the default branch or made the default.
 
 ### GUI
@@ -109,7 +113,7 @@ Main options:
 uv run github-pixel-artworks-gui
 ```
 
-Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. Enter your art repository (a GitHub URL or a folder), then **Generate Art** creates the commits on its default branch and **Push to GitHub** pushes them. An art branch is available as an advanced option.
+Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. Enter the target repository (for example `https://github.com/<username>/<username>`). **Dry run** reports how many commits are new, **Generate Art** adds them on the default branch, and **Push to GitHub** pushes them. An art branch is available as an advanced option.
 
 ![GUI editor with data/space_invaders.txt loaded](images/gui_editor.png)
 
@@ -135,7 +139,7 @@ The package is organised as:
 
 - `artwork.py`: the file format and intensity levels
 - `dates.py`: the calendar placement
-- `art_repo.py`: finding, cloning and pushing the art repository
+- `art_repo.py`: finding, cloning and pushing the target repository
 - `github.py`: usernames, the contribution calendar, remote URLs, and the email and fork checks
 - `painter.py`: `apply_drawing`, which creates the commits
 - `cli.py` and `gui.py`: the two front ends
