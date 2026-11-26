@@ -1,4 +1,4 @@
-"""Capture images/gui_editor.png and images/gui_levels.png from the real GUI.
+"""Capture images/gui_editor.png, images/gui_levels.png and images/pattern_tetris.png from the real GUI.
 
 Run under a virtual display at least as large as the default window (1540x600)
 plus the screen margin, for example:
@@ -12,6 +12,7 @@ current interpreter has no PIL.
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
@@ -27,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 IMAGES = ROOT / "images"
 EDITOR_SHOT = IMAGES / "gui_editor.png"
 LEVELS_SHOT = IMAGES / "gui_levels.png"
+PATTERN_TETRIS_SHOT = IMAGES / "pattern_tetris.png"
 
 EXAMPLE_TARGET = "https://github.com/<username>/<username>"
 """Same placeholder as the README and the earlier screenshots."""
@@ -126,7 +128,83 @@ def shade_heart(app: PixelArtGUI) -> None:
     app.filename_var.set(SHADED_FILENAME)
 
 
+def _new_app() -> tuple[tk.Tk, PixelArtGUI]:
+    root = tk.Tk()
+    app = PixelArtGUI(root)
+    app.year_var.set(YEAR)
+    app._on_schedule_changed()
+    app.target_repo_var.set(EXAMPLE_TARGET)
+    settle(root)
+    return root, app
+
+
+def _generate_pattern(
+    app: PixelArtGUI, name: str, *, width: int, seed: int, text: str = ""
+) -> None:
+    app.pattern_var.set(name)
+    app._toggle_pattern_text()
+    app.pattern_text_var.set(text)
+    app._resize_grid(width)
+    app._pattern_seed = seed
+    app._on_generate_pattern()
+
+
+def capture_readme_shots() -> list[Path]:
+    """Capture the README editor screenshots, including a Tetris pattern."""
+    root, app = _new_app()
+    try:
+        select_drawing(app, "space_invaders.txt")
+        grab(root, EDITOR_SHOT)
+        select_drawing(app, "heart.txt")
+        shade_heart(app)
+        grab(root, LEVELS_SHOT)
+    finally:
+        root.destroy()
+
+    root, app = _new_app()
+    try:
+        _generate_pattern(app, "tetris", width=52, seed=1)
+        grab(root, PATTERN_TETRIS_SHOT)
+    finally:
+        root.destroy()
+    return [EDITOR_SHOT, LEVELS_SHOT, PATTERN_TETRIS_SHOT]
+
+
+def capture_pattern_previews(out_dir: Path) -> list[Path]:
+    """Capture named pattern previews as they appear in the editor."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    shots = [
+        (out_dir / "pattern_tetris.png", "tetris", 52, 1, ""),
+        (out_dir / "pattern_text.png", "text", 10, 1, "SIMONE"),
+        (out_dir / "pattern_mirror.png", "mirror", 36, 7, ""),
+        (out_dir / "pattern_space_invaders.png", "space_invaders", 52, 11, ""),
+        (out_dir / "pattern_game_of_life.png", "game_of_life", 52, 21, ""),
+        (out_dir / "pattern_hearts.png", "hearts", 52, 2, ""),
+        (out_dir / "pattern_stripes.png", "stripes", 52, 5, ""),
+        (out_dir / "pattern_icons_dungeon.png", "icons_dungeon", 52, 11, ""),
+        (out_dir / "pattern_icons_nature.png", "icons_nature", 52, 11, ""),
+    ]
+    saved: list[Path] = []
+    for path, name, width, seed, text in shots:
+        root, app = _new_app()
+        try:
+            _generate_pattern(app, name, width=width, seed=seed, text=text)
+            grab(root, path)
+            saved.append(path)
+        finally:
+            root.destroy()
+    return saved
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--previews",
+        type=Path,
+        help="Write pattern preview PNGs to this folder "
+        "instead of recapturing the README screenshots.",
+    )
+    args = parser.parse_args()
     if not os.environ.get("DISPLAY"):
         raise SystemExit(
             "No DISPLAY is set. Capture under a virtual screen, e.g.\n"
@@ -134,24 +212,8 @@ def main() -> None:
             "scripts/capture_gui_screenshots.py"
         )
     os.chdir(ROOT)
-    root = tk.Tk()
-    try:
-        app = PixelArtGUI(root)
-        app.year_var.set(YEAR)
-        app._on_schedule_changed()
-        app.target_repo_var.set(EXAMPLE_TARGET)
-        settle(root)
-
-        select_drawing(app, "space_invaders.txt")
-        grab(root, EDITOR_SHOT)
-
-        select_drawing(app, "heart.txt")
-        shade_heart(app)
-        grab(root, LEVELS_SHOT)
-    finally:
-        root.destroy()
-
-    for path in (EDITOR_SHOT, LEVELS_SHOT):
+    paths = capture_pattern_previews(args.previews) if args.previews else capture_readme_shots()
+    for path in paths:
         print(f"{path} ({path.stat().st_size} bytes)")
 
 

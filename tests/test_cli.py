@@ -9,6 +9,7 @@ import pytest
 from github_pixel_artworks.artwork import count_commits, load_grid
 from github_pixel_artworks.cli import cli, perform_pixel_art
 from github_pixel_artworks.config import EXIT_BAD_ARGUMENT, EXIT_BAD_ARTWORK, EXIT_DRAWING_FAILED
+from github_pixel_artworks.patterns import generate
 
 SIMPLE = str(Path(__file__).resolve().parents[1] / "data" / "simple.txt")
 TWO_PIXELS = [[1, 0], [0, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
@@ -182,6 +183,43 @@ class TestArguments:
         run_cli("-i", SIMPLE, "--start-date", "2026-01-05", "-t", ART_REPO, "-y")
 
         assert "Warning: 2026-01-05 is not a Sunday" in capsys.readouterr().err
+
+
+class TestPatternArguments:
+    def test_a_pattern_is_an_alternative_to_an_artwork_file(self, run_cli) -> None:
+        received = run_cli(
+            "--pattern", "tetris", "--seed", "4", "--year", "2026", "-t", ART_REPO, "-y"
+        )
+
+        assert received["grid"] == generate("tetris", seed=4)
+        assert received["dry_run"] is False
+
+    def test_dry_run_previews_a_pattern(self, run_cli, capsys: pytest.CaptureFixture[str]) -> None:
+        run_cli("--pattern", "text", "--pattern-text", "HI", "--year", "2026", "--dry-run")
+
+        out = capsys.readouterr().out
+        assert "GitHub Pixel Art Preview" in out
+        assert "Dry run complete" in out
+
+    def test_dry_run_with_a_target_uses_the_generated_grid(self, run_cli) -> None:
+        received = run_cli(
+            "--pattern", "wave", "--seed", "2", "--year", "2026", "-t", ART_REPO, "--dry-run"
+        )
+
+        assert received["dry_run"] is True
+        assert received["grid"] == generate("wave", seed=2)
+
+    def test_pattern_and_input_cannot_both_be_given(self, run_cli) -> None:
+        assert exit_code_of(run_cli, "-i", SIMPLE, "--pattern", "random", "--year", "2026") == 2
+
+    def test_text_pattern_needs_pattern_text(self, run_cli) -> None:
+        assert (
+            exit_code_of(run_cli, "--pattern", "text", "--year", "2026", "--dry-run")
+            == EXIT_BAD_ARGUMENT
+        )
+
+    def test_a_source_is_required(self, run_cli) -> None:
+        assert exit_code_of(run_cli, "--year", "2026", "--dry-run") == 2
 
 
 def test_cli_draws_into_a_real_repo(git_repo: git.Repo, monkeypatch: pytest.MonkeyPatch) -> None:
