@@ -12,6 +12,11 @@ from github_pixel_artworks.config import (
     PATTERN_HEART_GAP,
     PATTERN_HEART_SPRITE,
     PATTERN_HEARTS,
+    PATTERN_ICON_DUNGEON_SPRITES,
+    PATTERN_ICON_GAP,
+    PATTERN_ICON_NATURE_SPRITES,
+    PATTERN_ICONS_DUNGEON,
+    PATTERN_ICONS_NATURE,
     PATTERN_INVADER_SPRITES,
     PATTERN_MIRROR,
     PATTERN_NAMES,
@@ -62,6 +67,8 @@ class TestShapeAndSeed:
             PATTERN_GAME_OF_LIFE,
             PATTERN_HEARTS,
             PATTERN_STRIPES,
+            PATTERN_ICONS_DUNGEON,
+            PATTERN_ICONS_NATURE,
         ],
     )
     def test_a_seeded_pattern_is_deterministic_and_in_range(self, name: str) -> None:
@@ -234,6 +241,36 @@ class TestStripes:
             for column in range(1, 20)
         )
         assert down_right or down_left
+
+
+class TestIcons:
+    @pytest.mark.parametrize(
+        "name, sprites",
+        [
+            (PATTERN_ICONS_DUNGEON, PATTERN_ICON_DUNGEON_SPRITES),
+            (PATTERN_ICONS_NATURE, PATTERN_ICON_NATURE_SPRITES),
+        ],
+    )
+    def test_stamps_themed_icons_with_gaps_and_contrasting_shades(
+        self, name: str, sprites: tuple[tuple[str, ...], ...]
+    ) -> None:
+        grid = generate(name, width=52, seed=4)
+        assert_valid(grid, 52)
+        matches = _matching_sprites(grid, sprites)
+        assert len(matches) >= 3
+        origins = [origin for origin, _cells in matches]
+        span = len(sprites[0][0])
+        assert all(len(sprite[0]) == span for sprite in sprites)
+        assert all(
+            right - left == span + PATTERN_ICON_GAP
+            for left, right in zip(origins, origins[1:], strict=False)
+        )
+        shades = [{grid[row][column] for row, column in cells} for _origin, cells in matches]
+        for icon_shades in shades:
+            assert len(icon_shades) == 1
+            assert icon_shades <= set(range(1, TOP_LEVEL + 1))
+        consecutive = [next(iter(icon_shades)) for icon_shades in shades]
+        assert all(left != right for left, right in zip(consecutive, consecutive[1:], strict=False))
 
 
 class TestText:

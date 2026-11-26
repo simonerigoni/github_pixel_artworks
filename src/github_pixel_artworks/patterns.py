@@ -20,6 +20,11 @@ from .config import (
     PATTERN_HEART_GAP,
     PATTERN_HEART_SPRITE,
     PATTERN_HEARTS,
+    PATTERN_ICON_DUNGEON_SPRITES,
+    PATTERN_ICON_GAP,
+    PATTERN_ICON_NATURE_SPRITES,
+    PATTERN_ICONS_DUNGEON,
+    PATTERN_ICONS_NATURE,
     PATTERN_INVADER_GAP,
     PATTERN_INVADER_SPRITES,
     PATTERN_LIFE_DENSITY,
@@ -612,6 +617,45 @@ def _stripes(*, width: int | None, rng: random.Random, **_extra: object) -> Grid
     ]
 
 
+def _icons_dungeon(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
+    return _icons(PATTERN_ICON_DUNGEON_SPRITES, width=width, rng=rng)
+
+
+def _icons_nature(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
+    return _icons(PATTERN_ICON_NATURE_SPRITES, width=width, rng=rng)
+
+
+def _icons(sprites: tuple[tuple[str, ...], ...], *, width: int | None, rng: random.Random) -> Grid:
+    """Stamp a seeded, shuffled set of icons with gaps and contrasting shades."""
+    columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
+    grid = _blank(columns)
+    order = list(sprites)
+    rng.shuffle(order)
+    min_width = min(len(sprite[0]) for sprite in order)
+    max_start = max(0, columns - min_width)
+    column = rng.randint(0, min(PATTERN_ICON_GAP, max_start)) if max_start else 0
+    previous: int | None = None
+    for sprite in order:
+        span = len(sprite[0])
+        if column + span > columns:
+            break
+        level = _icon_level(rng, previous)
+        _stamp_sprite(grid, sprite, column, level, level)
+        previous = level
+        column += span + PATTERN_ICON_GAP
+    return grid
+
+
+def _icon_level(rng: random.Random, previous: int | None) -> int:
+    """Pick a shade, preferring one far from the previous icon when possible."""
+    choices = [level for level in range(1, TOP_LEVEL + 1) if level != previous]
+    if previous is None:
+        return rng.choice(choices)
+    best = max(abs(level - previous) for level in choices)
+    preferred = [level for level in choices if abs(level - previous) == best]
+    return rng.choice(preferred)
+
+
 GENERATORS: dict[str, PatternGenerator] = {
     PATTERN_RANDOM: _random_noise,
     PATTERN_MIRROR: _mirror,
@@ -622,6 +666,8 @@ GENERATORS: dict[str, PatternGenerator] = {
     PATTERN_GAME_OF_LIFE: _game_of_life,
     PATTERN_HEARTS: _hearts,
     PATTERN_STRIPES: _stripes,
+    PATTERN_ICONS_DUNGEON: _icons_dungeon,
+    PATTERN_ICONS_NATURE: _icons_nature,
 }
 """Name to generator; add a theme by putting a function here and a name in PATTERN_NAMES."""
 

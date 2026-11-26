@@ -181,6 +181,8 @@ def capture_pattern_previews(out_dir: Path) -> list[Path]:
         (out_dir / "pattern_game_of_life.png", "game_of_life", 52, 21, ""),
         (out_dir / "pattern_hearts.png", "hearts", 52, 2, ""),
         (out_dir / "pattern_stripes.png", "stripes", 52, 5, ""),
+        (out_dir / "pattern_icons_dungeon.png", "icons_dungeon", 52, 11, ""),
+        (out_dir / "pattern_icons_nature.png", "icons_nature", 52, 11, ""),
     ]
     saved: list[Path] = []
     for path, name, width, seed, text in shots:

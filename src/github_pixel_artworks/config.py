@@ -146,6 +146,8 @@ PATTERN_SPACE_INVADERS = "space_invaders"
 PATTERN_GAME_OF_LIFE = "game_of_life"
 PATTERN_HEARTS = "hearts"
 PATTERN_STRIPES = "stripes"
+PATTERN_ICONS_DUNGEON = "icons_dungeon"
+PATTERN_ICONS_NATURE = "icons_nature"
 PATTERN_NAMES = (
     PATTERN_RANDOM,
     PATTERN_MIRROR,
@@ -156,6 +158,8 @@ PATTERN_NAMES = (
     PATTERN_GAME_OF_LIFE,
     PATTERN_HEARTS,
     PATTERN_STRIPES,
+    PATTERN_ICONS_DUNGEON,
+    PATTERN_ICONS_NATURE,
 )
 """Themes offered by the CLI ``--pattern`` flag and the GUI pattern control."""
 
@@ -181,6 +185,8 @@ PATTERN_LIFE_DENSITY = 0.32
 """Default fill chance of the Game of Life soup."""
 PATTERN_HEART_GAP = 3
 """Empty columns between repeated 5-wide hearts."""
+PATTERN_ICON_GAP = 3
+"""Empty columns between stamped dungeon or nature icons."""
 PATTERN_TEXT_ALIGN_CENTER = "center"
 PATTERN_TEXT_ALIGN_LEFT = "left"
 PATTERN_TEXT_ALIGNS = (PATTERN_TEXT_ALIGN_CENTER, PATTERN_TEXT_ALIGN_LEFT)
@@ -310,6 +316,114 @@ PATTERN_HEART_SPRITE: _Sprite = (
     "..#..",
 )
 """A 5-wide heart that fits in the 7-row contribution grid."""
+
+# Original 7x7 1-bit icons for the icons_dungeon and icons_nature patterns.
+PATTERN_ICON_DUNGEON_SPRITES: tuple[_Sprite, ...] = (
+    (  # sword
+        "...#...",
+        "...#...",
+        "...#...",
+        "...#...",
+        ".#####.",
+        "...#...",
+        "..###..",
+    ),
+    (  # shield
+        ".#####.",
+        "#.....#",
+        "#.#.#.#",
+        "#.....#",
+        "#.....#",
+        ".#...#.",
+        "..###..",
+    ),
+    (  # skull
+        ".#####.",
+        "#.....#",
+        "#.#.#.#",
+        "##...##",
+        ".#####.",
+        ".#.#.#.",
+        "#.#.#.#",
+    ),
+    (  # potion
+        "..###..",
+        "...#...",
+        ".#####.",
+        "#.....#",
+        "#..#..#",
+        "#.....#",
+        ".#####.",
+    ),
+    (  # key
+        ".###...",
+        ".#.#...",
+        ".###...",
+        "..#....",
+        "..#.#..",
+        "..###..",
+        "....#..",
+    ),
+    (  # heart
+        ".##.##.",
+        "#######",
+        "#######",
+        ".#####.",
+        "..###..",
+        "...#...",
+        ".......",
+    ),
+)
+"""Hand-drawn dungeon icons: sword, shield, skull, potion, key, heart."""
+
+PATTERN_ICON_NATURE_SPRITES: tuple[_Sprite, ...] = (
+    (  # tree
+        "..###..",
+        ".#####.",
+        "#######",
+        ".#####.",
+        "..#.#..",
+        "...#...",
+        "...#...",
+    ),
+    (  # mushroom
+        "..###..",
+        ".#####.",
+        "#######",
+        "#.#.#.#",
+        ".#####.",
+        "...#...",
+        "..###..",
+    ),
+    (  # flower
+        "..#.#..",
+        ".#.#.#.",
+        "..###..",
+        ".#####.",
+        "..###..",
+        "...#...",
+        "...#...",
+    ),
+    (  # leaf
+        "....##.",
+        "...#.#.",
+        "..#..##",
+        ".#..#.#",
+        "#..##..",
+        ".###...",
+        "..#....",
+    ),
+    (  # sun
+        "#..#..#",
+        ".#...#.",
+        "#.###.#",
+        "..#.#..",
+        "#.###.#",
+        ".#...#.",
+        "#..#..#",
+    ),
+)
+"""Hand-drawn nature icons: tree, mushroom, flower, leaf, sun."""
 
 # CLI exit codes --------------------------------------------------------------
 
