@@ -18,11 +18,14 @@ import pytest
 from github_pixel_artworks import gui
 from github_pixel_artworks.config import (
     ACTIONS_PANE_MIN_WIDTH,
+    DAYS_PER_WEEK,
     DRAWINGS_PANE_MIN_WIDTH,
     EDITOR_PANE_MIN_WIDTH,
     EMPTY_COLOR,
     GENERATE_BUTTON_TEXT,
+    GRID_YEAR_WEEKS,
     LEVEL_COLORS,
+    MAX_CELL_SIZE,
     MAX_WEEKS,
     MIN_CELL_SIZE,
     PATTERN_TETRIS,
@@ -324,41 +327,77 @@ class TestLayout:
         assert pane_widths(window)[1] > editor
         assert pane_widths(window)[2] == actions
 
-    def test_the_default_cells_fill_most_of_the_canvas_height(
+    def test_fit_mode_sizes_square_cells_so_a_year_fills_the_canvas_width(
         self, window: gui.PixelArtGUI
     ) -> None:
+        window._resize_grid(MAX_WEEKS)
         resize(window, *WINDOW_SIZE)
 
+        canvas_width = window.canvas.winfo_width()
         canvas_height = window.canvas.winfo_height()
-        grid_height = 7 * window.cell_size
-        assert window.cell_size >= 40
-        assert grid_height >= canvas_height * 0.8
-        assert grid_height <= canvas_height
+        coords = window.canvas.coords("cell_0_0")
+        size = coords[2] - coords[0]
+        assert size == coords[3] - coords[1]
+        assert size == window.cell_size
+        weeks = max(GRID_YEAR_WEEKS, MAX_WEEKS)
+        assert MAX_WEEKS * size <= canvas_width
+        assert abs(size - (canvas_width - 2) // weeks) <= 1
+        assert DAYS_PER_WEEK * size < canvas_height
+        assert window.canvas.xview() == (0.0, 1.0)
+        assert window._fit_to_width
 
-    def test_the_cell_size_control_zooms_the_grid(self, window: gui.PixelArtGUI) -> None:
+    def test_the_cell_size_control_zooms_the_grid_and_leaves_fit_mode(
+        self, window: gui.PixelArtGUI
+    ) -> None:
         resize(window, *WINDOW_SIZE)
         original = window.cell_size
 
         window.cell_size_var.set(MIN_CELL_SIZE)
         settle(window.root)
 
+        assert window._fit_to_width is False
         assert window.cell_size == MIN_CELL_SIZE
         assert window.cell_size < original
         coords = window.canvas.coords("cell_0_0")
         assert coords[2] - coords[0] == MIN_CELL_SIZE
 
-    def test_a_full_year_scrolls_at_the_default_cell_size(self, window: gui.PixelArtGUI) -> None:
+    def test_fit_keeps_a_full_year_visible_when_the_window_resizes(
+        self, window: gui.PixelArtGUI
+    ) -> None:
         window._resize_grid(MAX_WEEKS)
         resize(window, 1600, 900)
+        size_at_1600 = window.cell_size
+        assert window.canvas.xview() == (0.0, 1.0)
 
+        resize(window, *WINDOW_SIZE)
+        assert window._fit_to_width
+        assert window.cell_size > size_at_1600
+        assert window.canvas.xview() == (0.0, 1.0)
+
+    def test_fit_restores_width_fit_after_a_manual_zoom(self, window: gui.PixelArtGUI) -> None:
+        window._resize_grid(MAX_WEEKS)
+        resize(window, *WINDOW_SIZE)
+        window.cell_size_var.set(MAX_CELL_SIZE)
+        settle(window.root)
         assert window.canvas.xview() != (0.0, 1.0)
 
-    def test_shrinking_the_cell_size_can_fit_a_full_year(self, window: gui.PixelArtGUI) -> None:
-        window._resize_grid(MAX_WEEKS)
-        resize(window, 1600, 900)
-        window.cell_size_var.set(MIN_CELL_SIZE)
+        window._fit_to_canvas()
         settle(window.root)
 
+        assert window._fit_to_width
+        assert window.canvas.xview() == (0.0, 1.0)
+
+    def test_fit_accounts_for_offset_and_added_weeks(self, window: gui.PixelArtGUI) -> None:
+        window._resize_grid(MAX_WEEKS)
+        resize(window, *WINDOW_SIZE)
+        size_for_a_year = window.cell_size
+
+        window.offset_var.set(20)
+        window._on_schedule_changed()
+        settle(window.root)
+
+        assert window._weeks_to_fit() == MAX_WEEKS + 20
+        assert window.cell_size < size_for_a_year
         assert window.canvas.xview() == (0.0, 1.0)
 
     def test_the_default_window_fits_a_1080p_screen(self) -> None:

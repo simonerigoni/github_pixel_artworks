@@ -433,15 +433,16 @@ EXIT_BAD_ARGUMENT = 5
 
 # GUI -------------------------------------------------------------------------
 
-CELL_SIZE = 64
-"""Default side of one grid cell, in pixels.
-
-At WINDOW_SIZE this fills most of the editor canvas height (seven rows). A
-53-week year is wider than that canvas, so the grid scrolls horizontally. The
-toolbar cell-size control zooms in or out between MIN_CELL_SIZE and MAX_CELL_SIZE.
-"""
+CELL_SIZE = 24
+"""Fallback cell size in pixels, used only before the canvas has a real width."""
 MIN_CELL_SIZE = 12
 MAX_CELL_SIZE = 80
+GRID_YEAR_WEEKS = 53
+"""Week columns the default Fit zoom tries to show: a typical GitHub year.
+
+Fit uses the larger of this and the current grid columns plus the week offset,
+so added weeks and a non-zero offset still stay on screen when there is room.
+"""
 GRID_BACKGROUND = "#f0f0f0"
 CELL_OUTLINE = "#999"
 CANVAS_BORDER = "#888"
@@ -451,8 +452,12 @@ DARK_LEVEL_TEXT_FROM = 3
 DEFAULT_COLUMNS = 10
 MIN_COLUMNS = 3
 
-WINDOW_SIZE = (1540, 600)
-"""Preferred first size: wide enough for a full year of weeks next to both side panes."""
+WINDOW_SIZE = (1840, 600)
+"""Preferred first size: as wide as a 1920x1080 screen allows after the margin.
+
+A wider window makes Fit mode cells larger while a 53-week year still stays
+on screen next to both side panes.
+"""
 WINDOW_SCREEN_MARGIN = 80
 """Pixels left free on each axis when the screen is smaller than WINDOW_SIZE."""
 WINDOW_MIN_SIZE = (720, 400)

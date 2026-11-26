@@ -1,6 +1,6 @@
 """Capture images/gui_editor.png, images/gui_levels.png and images/pattern_tetris.png from the real GUI.
 
-Run under a virtual display at least as large as the default window (1540x600)
+Run under a virtual display at least as large as the default window (1840x600)
 plus the screen margin, for example:
 
     xvfb-run -a -s "-screen 0 1920x1080x24" uv run python scripts/capture_gui_screenshots.py
