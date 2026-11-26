@@ -1,7 +1,11 @@
 """GitHub username checks, contribution scraping, remote URLs and repository checks."""
 
+import json
+import urllib.error
+import urllib.request
 from pathlib import Path
 
+import git
 import pytest
 
 from github_pixel_artworks.github import (
@@ -177,6 +181,31 @@ def test_profile_repo_url() -> None:
     assert profile_repo_url("octocat") == "https://github.com/octocat/octocat"
 
 
+USER_NAME_SOURCE = "git user.name; set github.user to be sure"
+SEARCH_SOURCE = "GitHub commit search by git user.email"
+
+
+def search_result(*logins: str | None) -> str:
+    items = [{"author": None if login is None else {"login": login}} for login in logins]
+    return json.dumps({"total_count": len(items), "items": items})
+
+
+@pytest.fixture
+def commit_search(monkeypatch: pytest.MonkeyPatch):
+    """Answer GitHub's commit search with ``body`` and record each request."""
+    requests: list[tuple[urllib.request.Request, float]] = []
+
+    def install(body: str) -> list[tuple[urllib.request.Request, float]]:
+        def fake_urlopen(request: urllib.request.Request, timeout: float) -> FakeResponse:
+            requests.append((request, timeout))
+            return FakeResponse(body)
+
+        monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+        return requests
+
+    return install
+
+
 class TestDetectGithubUsername:
     def test_github_user_wins(self, set_global_git_config, fake_gh) -> None:
         set_global_git_config("github.user", "octocat")
@@ -192,6 +221,105 @@ class TestDetectGithubUsername:
         set_global_git_config("user.email", email)
 
         assert detect_github_username() == ("octocat", "the no-reply git user.email")
+
+    def test_a_noreply_email_wins_over_user_name(self, set_global_git_config) -> None:
+        set_global_git_config("user.name", "someone-else")
+        set_global_git_config("user.email", "octocat@users.noreply.github.com")
+
+        assert detect_github_username() == ("octocat", "the no-reply git user.email")
+
+    def test_guesses_from_a_user_name_shaped_like_a_login(
+        self, set_global_git_config, commit_search
+    ) -> None:
+        set_global_git_config("user.name", "octocat")
+        set_global_git_config("user.email", "octocat@gmail.com")
+        requests = commit_search(search_result("someone-else"))
+
+        assert detect_github_username() == ("octocat", USER_NAME_SOURCE)
+        assert requests == []
+
+    @pytest.mark.parametrize("name", ["Octo Cat", "-octocat", "octocat-", "octo--cat", "a" * 40])
+    def test_skips_a_user_name_that_is_not_a_login(
+        self, set_global_git_config, commit_search, name: str
+    ) -> None:
+        set_global_git_config("user.name", name)
+        set_global_git_config("user.email", "octocat@gmail.com")
+        commit_search(search_result("octocat"))
+
+        assert detect_github_username() == ("octocat", SEARCH_SOURCE)
+
+    def test_searches_public_commits_by_user_email(
+        self, set_global_git_config, commit_search
+    ) -> None:
+        set_global_git_config("user.name", "Octo Cat")
+        set_global_git_config("user.email", "octo+cat@gmail.com")
+        requests = commit_search(search_result("octocat", "someone-else"))
+
+        assert detect_github_username() == ("octocat", SEARCH_SOURCE)
+        [(request, timeout)] = requests
+        assert request.full_url == (
+            "https://api.github.com/search/commits?q=author-email%3Aocto%2Bcat%40gmail.com"
+        )
+        assert request.get_header("Authorization") is None
+        assert request.get_header("User-agent")
+        assert timeout <= 10
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            search_result(),
+            search_result(None),
+            search_result("not a login!"),
+            "not json",
+            json.dumps({"message": "API rate limit exceeded"}),
+            json.dumps([]),
+        ],
+    )
+    def test_the_commit_search_finds_nothing_in(
+        self, set_global_git_config, commit_search, body: str
+    ) -> None:
+        set_global_git_config("user.email", "octocat@gmail.com")
+        commit_search(body)
+
+        assert detect_github_username() is None
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            urllib.error.HTTPError("url", 403, "rate limit exceeded", None, None),  # type: ignore[arg-type]
+            urllib.error.URLError("offline"),
+            TimeoutError("timed out"),
+        ],
+    )
+    def test_the_commit_search_is_silent_on_failure(
+        self, set_global_git_config, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        set_global_git_config("user.email", "octocat@gmail.com")
+
+        def failing_urlopen(*_args: object, **_kwargs: object) -> None:
+            raise error
+
+        monkeypatch.setattr("urllib.request.urlopen", failing_urlopen)
+
+        assert detect_github_username() is None
+
+    def test_skips_the_commit_search_without_a_user_email(
+        self, set_global_git_config, commit_search
+    ) -> None:
+        set_global_git_config("user.name", "Octo Cat")
+        requests = commit_search(search_result("octocat"))
+
+        assert detect_github_username() is None
+        assert requests == []
+
+    def test_reads_the_settings_of_the_current_repository(
+        self, git_repo: git.Repo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with git_repo.config_writer() as cw:
+            cw.set_value("user", "name", "octocat")
+        monkeypatch.chdir(str(git_repo.working_tree_dir))
+
+        assert detect_github_username() == ("octocat", USER_NAME_SOURCE)
 
     def test_falls_back_to_gh_when_installed(self, set_global_git_config, fake_gh) -> None:
         set_global_git_config("user.email", "octocat@example.com")

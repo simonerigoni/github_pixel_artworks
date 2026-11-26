@@ -170,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
         "https://github.com/<username>/<username>: a GitHub URL (cloned into ./<repo>) or a "
         "local path. Empty commits go on its default branch. Default: the profile README "
         "repository of your GitHub user, from git config github.user, a no-reply "
-        "user.email or gh.",
+        "user.email, a login-shaped user.name, GitHub's commit search by user.email, or gh.",
     )
     target.add_argument("--push", action="store_true", help="Push to origin after drawing.")
     target.add_argument(

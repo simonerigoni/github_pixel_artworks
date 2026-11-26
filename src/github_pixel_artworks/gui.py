@@ -461,7 +461,7 @@ class PixelArtGUI:
     def _prefill_target_repo(self) -> None:
         """Fill the target with the user's profile README repository, if detectable.
 
-        Detection may run ``gh``, so it happens on a worker thread; a value the
+        Detection may query GitHub or run ``gh``, so it happens on a worker thread; a value the
         user typed in the meantime is kept. The worker only sees the result
         queue, so it never holds on to Tk objects.
         """
