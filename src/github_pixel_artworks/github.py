@@ -2,6 +2,9 @@
 
 import json
 import math
+import os
+import shutil
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,9 +14,14 @@ from .config import (
     CONTRIBUTIONS_URL,
     DAY_COUNT_RE,
     FETCH_TIMEOUT_SECONDS,
+    GH_COMMAND,
+    GH_TIMEOUT_SECONDS,
+    GIT_CONFIG_TIMEOUT_SECONDS,
     GITHUB_REMOTE_PREFIXES,
     GITHUB_URL,
+    GITHUB_USER_CONFIG_KEY,
     NOREPLY_RE,
+    PROFILE_REPO_URL,
     REPO_API_URL,
     TOP_LEVEL,
     USERNAME_RE,
@@ -112,3 +120,56 @@ def fetch_is_fork(owner: str, repo: str) -> bool | None:
     except urllib.error.URLError, TimeoutError, ValueError:
         return None
     return bool(data.get("fork")) if isinstance(data, dict) else None
+
+
+def profile_repo_url(username: str) -> str:
+    """Return the URL of the profile README repository of ``username``."""
+    return PROFILE_REPO_URL.format(username=username)
+
+
+def detect_github_username() -> tuple[str, str] | None:
+    """Return ``(username, source)`` from the local settings, or None.
+
+    The first valid hit wins: the global ``git config github.user``, the login in
+    a no-reply ``user.email``, then ``gh api user`` if the GitHub CLI is
+    installed. Only ``gh`` may use the network, and any failure means no hit.
+    """
+    user = _git_global_config(GITHUB_USER_CONFIG_KEY)
+    if user and is_valid_github_username(user):
+        return user, f"git config {GITHUB_USER_CONFIG_KEY}"
+    email = _git_global_config("user.email")
+    match = NOREPLY_RE.fullmatch(email) if email else None
+    if match and is_valid_github_username(match["login"]):
+        return match["login"], "the no-reply git user.email"
+    login = _gh_login()
+    if login and is_valid_github_username(login):
+        return login, "gh api user"
+    return None
+
+
+def _git_global_config(key: str) -> str | None:
+    command = ["git", "config", "--global", "--get", key]
+    return _run(command, GIT_CONFIG_TIMEOUT_SECONDS)
+
+
+def _gh_login() -> str | None:
+    """Return the login gh is signed in as, or None if gh is missing or not signed in."""
+    gh = shutil.which(GH_COMMAND)
+    return _run([gh, "api", "user", "--jq", ".login"], GH_TIMEOUT_SECONDS) if gh else None
+
+
+def _run(command: list[str], timeout: float) -> str | None:
+    """Return the stripped output of ``command``, or None if it fails or times out."""
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env={**os.environ, "GH_PROMPT_DISABLED": "1"},
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return None
+    output = result.stdout.strip()
+    return output if result.returncode == 0 and output else None

@@ -7,10 +7,12 @@ import pytest
 from github_pixel_artworks.github import (
     calculate_multiplier,
     commit_email_warning,
+    detect_github_username,
     fetch_is_fork,
     fetch_max_daily_commits,
     github_slug,
     normalize_github_https_url,
+    profile_repo_url,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -169,3 +171,49 @@ class TestFetchIsFork:
         serve("<html>rate limited</html>")
 
         assert fetch_is_fork("you", "pixel-art") is None
+
+
+def test_profile_repo_url() -> None:
+    assert profile_repo_url("octocat") == "https://github.com/octocat/octocat"
+
+
+class TestDetectGithubUsername:
+    def test_github_user_wins(self, set_global_git_config, fake_gh) -> None:
+        set_global_git_config("github.user", "octocat")
+        set_global_git_config("user.email", "1+other@users.noreply.github.com")
+        fake_gh("echo someone-else")
+
+        assert detect_github_username() == ("octocat", "git config github.user")
+
+    @pytest.mark.parametrize(
+        "email", ["123+octocat@users.noreply.github.com", "octocat@users.noreply.github.com"]
+    )
+    def test_falls_back_to_a_noreply_user_email(self, set_global_git_config, email: str) -> None:
+        set_global_git_config("user.email", email)
+
+        assert detect_github_username() == ("octocat", "the no-reply git user.email")
+
+    def test_falls_back_to_gh_when_installed(self, set_global_git_config, fake_gh) -> None:
+        set_global_git_config("user.email", "octocat@example.com")
+        fake_gh("echo octocat")
+
+        assert detect_github_username() == ("octocat", "gh api user")
+
+    def test_skips_an_invalid_github_user(self, set_global_git_config) -> None:
+        set_global_git_config("github.user", "not a login!")
+
+        assert detect_github_username() is None
+
+    def test_finds_nothing_without_settings_or_gh(self) -> None:
+        assert detect_github_username() is None
+
+    def test_ignores_gh_when_it_fails(self, fake_gh) -> None:
+        fake_gh("echo 'not logged in' >&2; exit 1")
+
+        assert detect_github_username() is None
+
+    def test_gives_up_on_gh_after_a_timeout(self, fake_gh, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_gh("sleep 5; echo octocat")
+        monkeypatch.setattr("github_pixel_artworks.github.GH_TIMEOUT_SECONDS", 0.2)
+
+        assert detect_github_username() is None
