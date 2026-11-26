@@ -6,7 +6,7 @@ from pathlib import Path
 import git
 import pytest
 
-from github_pixel_artworks.config import CLONE_TEMP_PREFIX, MAX_WEEKS
+from github_pixel_artworks.config import MAX_WEEKS, TARGET_CLONE_DIR_NAME
 from github_pixel_artworks.identity import MissingIdentityError
 from github_pixel_artworks.painter import apply_drawing, preview
 
@@ -163,8 +163,11 @@ class TestNewArtRepository:
         assert f"git -C {clone} push -u origin main" in "\n".join(lines)
 
 
-def temp_clones(temp_root: Path) -> list[Path]:
-    return sorted(temp_root.glob(f"{CLONE_TEMP_PREFIX}*"))
+def url_clones(clone_root: Path) -> list[Path]:
+    parent = clone_root / TARGET_CLONE_DIR_NAME
+    if not parent.is_dir():
+        return []
+    return sorted(path for path in parent.iterdir() if path.is_dir())
 
 
 def draw_url(url: str, **kwargs: object) -> int:
@@ -192,12 +195,13 @@ class TestIdentity:
         assert not any("not set" in line for line in lines)
         assert any("Source User <source@example.com>" in line for line in lines)
 
-    def test_the_clone_is_not_inside_the_tool_checkout(
-        self, source_checkout: Path, empty_remote: str, temp_root: Path
+    def test_the_clone_lands_in_target_cloned_repo_not_the_working_directory(
+        self, source_checkout: Path, empty_remote: str, clone_root: Path
     ) -> None:
         draw_url(empty_remote, keep_clone=True)
 
-        [clone] = temp_clones(temp_root)
+        [clone] = url_clones(clone_root)
+        assert clone == clone_root / TARGET_CLONE_DIR_NAME / "pixel-art"
         assert not clone.is_relative_to(source_checkout)
         assert not (source_checkout / "pixel-art").exists()
         assert not (source_checkout / "sub" / "pixel-art").exists()
@@ -214,12 +218,12 @@ class TestIdentity:
         assert {c.author.email for c in art_commits(clone, "main")} == {"target@example.com"}
 
     def test_fails_before_cloning_without_any_identity(
-        self, empty_remote: str, temp_root: Path
+        self, empty_remote: str, clone_root: Path
     ) -> None:
         with pytest.raises(MissingIdentityError, match="git config --global user.email"):
             draw_url(empty_remote)
 
-        assert temp_clones(temp_root) == []
+        assert url_clones(clone_root) == []
 
     def test_fails_before_committing_when_the_target_has_no_identity(
         self, tmp_path: Path, filled_remote: str
@@ -233,38 +237,37 @@ class TestIdentity:
         assert clone.head.commit == head
 
 
-class TestTemporaryClone:
+class TestUrlClone:
     def test_is_deleted_once_the_art_is_pushed(
-        self, empty_remote: str, git_identity: None, temp_root: Path
+        self, empty_remote: str, git_identity: None, clone_root: Path
     ) -> None:
         lines: list[str] = []
 
         draw_url(empty_remote, push=True, log=lines.append)
 
-        assert temp_clones(temp_root) == []
-        assert any("Removed the temporary clone" in line for line in lines)
+        assert url_clones(clone_root) == []
+        assert any("Removed the clone" in line for line in lines)
 
     def test_is_kept_while_its_art_commits_are_unpushed(
-        self, empty_remote: str, git_identity: None, temp_root: Path
+        self, empty_remote: str, git_identity: None, clone_root: Path
     ) -> None:
         lines: list[str] = []
         kept: list[Path] = []
 
         draw_url(empty_remote, log=lines.append, on_clone_kept=kept.append)
 
-        [folder] = temp_clones(temp_root)
-        clone = folder / "pixel-art"
+        [clone] = url_clones(clone_root)
         assert kept == [clone]
         assert len(art_commits(git.Repo(clone), "main")) == 2
         text = "\n".join(lines)
         assert f"git -C {clone} push -u origin main" in text
-        assert f"Kept the temporary clone at {clone}" in text
+        assert f"Kept the clone at {clone}" in text
 
     def test_is_kept_when_the_push_fails(
         self,
         empty_remote: str,
         git_identity: None,
-        temp_root: Path,
+        clone_root: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         def failing_push(*_args: object) -> None:
@@ -276,38 +279,56 @@ class TestTemporaryClone:
         with pytest.raises(RuntimeError, match="push rejected"):
             draw_url(empty_remote, push=True, log=lines.append)
 
-        [folder] = temp_clones(temp_root)
-        assert any(f"Kept the temporary clone at {folder / 'pixel-art'}" in line for line in lines)
+        [clone] = url_clones(clone_root)
+        assert any(f"Kept the clone at {clone}" in line for line in lines)
 
     def test_is_deleted_when_drawing_fails_before_any_commit(
-        self, empty_remote: str, git_identity: None, temp_root: Path
+        self, empty_remote: str, git_identity: None, clone_root: Path
     ) -> None:
         with pytest.raises(ValueError):
             draw_url(empty_remote, art_branch="bad..name")
 
-        assert temp_clones(temp_root) == []
+        assert url_clones(clone_root) == []
 
     def test_is_deleted_after_a_dry_run(
-        self, empty_remote: str, git_identity: None, temp_root: Path
+        self, empty_remote: str, git_identity: None, clone_root: Path
     ) -> None:
         assert draw_url(empty_remote, dry_run=True) == 2
 
-        assert temp_clones(temp_root) == []
+        assert url_clones(clone_root) == []
 
     def test_is_deleted_when_the_art_is_already_published(
-        self, empty_remote: str, git_identity: None, temp_root: Path
+        self, empty_remote: str, git_identity: None, clone_root: Path
     ) -> None:
         draw_url(empty_remote, push=True)
 
         assert draw_url(empty_remote) == 0
-        assert temp_clones(temp_root) == []
+        assert url_clones(clone_root) == []
 
     def test_keep_clone_keeps_it_after_a_push(
-        self, empty_remote: str, git_identity: None, temp_root: Path
+        self, empty_remote: str, git_identity: None, clone_root: Path
     ) -> None:
         draw_url(empty_remote, push=True, keep_clone=True)
 
-        assert len(temp_clones(temp_root)) == 1
+        assert len(url_clones(clone_root)) == 1
+
+    def test_a_clone_nested_in_the_tool_checkout_is_not_refused(
+        self,
+        empty_remote: str,
+        git_identity: None,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        root = tmp_path / "github_pixel_artworks"
+        package = root / "src" / "github_pixel_artworks"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (root / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf-8")
+        monkeypatch.setattr("github_pixel_artworks.art_repo.tool_project_root", lambda: root)
+
+        assert draw_url(empty_remote, keep_clone=True) == 2
+        clone = root / TARGET_CLONE_DIR_NAME / "pixel-art"
+        assert len(art_commits(git.Repo(clone), "main")) == 2
 
     def test_a_local_target_is_never_deleted(
         self, tmp_path: Path, filled_remote: str, git_identity: None

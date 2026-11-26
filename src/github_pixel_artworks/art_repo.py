@@ -3,14 +3,13 @@
 import os
 import shutil
 import stat
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 import git
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
-from .config import CLONE_TEMP_PREFIX, TOOL_MARKER, URL_SCHEMES
+from .config import TARGET_CLONE_DIR_NAME, TOOL_MARKER, URL_SCHEMES
 
 type Log = Callable[[str], None]
 
@@ -39,21 +38,100 @@ def local_checkout_path(target: str, base_dir: Path | None = None) -> Path:
     return (base_dir or Path.cwd()) / repo_folder_name(target)
 
 
-def clone_to_temp(url: str, log: Log) -> git.Repo:
-    """Clone ``url`` into a new temporary folder and return the clone.
+def tool_project_root() -> Path:
+    """Return the project root this tool runs from, or the working directory.
 
-    The folder is made by ``tempfile.mkdtemp`` with ``CLONE_TEMP_PREFIX``, so it is
-    never inside the tool's checkout and every run starts from what is on GitHub.
-    The caller removes it (``remove_tree`` on the clone's parent) when done.
+    Walks up from this package looking for ``pyproject.toml`` and ``TOOL_MARKER``,
+    so a URL target is always cloned into a fixed folder next to those files,
+    regardless of the working directory. In an editable checkout that is the
+    repository root. If the package is not running from a checkout (for example
+    a site-packages install), the working directory is used instead.
     """
-    folder = Path(tempfile.mkdtemp(prefix=CLONE_TEMP_PREFIX))
-    path = folder / repo_folder_name(url)
-    log(f"Cloning {url} into the temporary folder {path}...")
+    return find_tool_project_root(Path(__file__).resolve()) or Path.cwd()
+
+
+def find_tool_project_root(start: Path) -> Path | None:
+    """Return the project root at or above ``start``, or None if there is none."""
+    for candidate in (start, *start.parents):
+        if (candidate / "pyproject.toml").is_file() and (candidate / TOOL_MARKER).is_file():
+            return candidate
+    return None
+
+
+def target_clone_parent() -> Path:
+    """Return the folder URL targets are cloned into (``target_cloned_repo``)."""
+    return tool_project_root() / TARGET_CLONE_DIR_NAME
+
+
+def clone_url_target(url: str, log: Log) -> git.Repo:
+    """Clone ``url`` into ``target_cloned_repo/<repo>`` and return the clone.
+
+    The parent folder sits at the tool's project root (see ``tool_project_root``).
+    An existing folder at the same path is reused when it is a clone of ``url``:
+    a clean clone is fetched and reset to the remote, so the run starts from
+    what is on GitHub; a clone that still holds unpushed commits is left as it
+    is. Anything else (a different remote, a non-git folder, uncommitted
+    changes) raises ``RuntimeError`` and is not deleted. The caller removes the
+    ``<repo>`` folder when done (and the parent if it is then empty).
+    """
+    parent = target_clone_parent()
+    path = parent / repo_folder_name(url)
+    if path.exists():
+        return _open_existing_url_clone(url, path, log)
+    parent.mkdir(parents=True, exist_ok=True)
+    log(f"Cloning {url} into {path}...")
     try:
         return git.Repo.clone_from(url, path)
     except Exception:
-        remove_tree(folder)
+        if path.exists():
+            remove_tree(path)
+        remove_dir_if_empty(parent)
         raise
+
+
+def _open_existing_url_clone(url: str, path: Path, log: Log) -> git.Repo:
+    """Reuse ``path`` when it is a safe clone of ``url``; otherwise raise."""
+    try:
+        repo = git.Repo(path)
+    except InvalidGitRepositoryError, NoSuchPathError:
+        repo = None
+    if repo is None or "origin" not in repo.remotes or repo.remotes.origin.url != url:
+        raise RuntimeError(
+            f"{path} already exists and is not a clone of {url}. Move or delete it, then try again."
+        )
+    if repo.is_dirty(untracked_files=True):
+        raise RuntimeError(
+            f"{path} already exists and has uncommitted changes. "
+            "Commit, move or delete them, then try again."
+        )
+    if _unpushed_or_unknown(repo):
+        log(f"Using the existing clone at {path} (it holds unpushed commits).")
+        return repo
+    log(f"Updating the existing clone at {path}...")
+    try:
+        _refresh_clean_clone(repo)
+    except GitCommandError as error:
+        raise RuntimeError(
+            f"Could not update the existing clone at {path}. Move or delete it, then try again."
+        ) from error
+    return repo
+
+
+def _unpushed_or_unknown(repo: git.Repo) -> bool:
+    try:
+        return has_unpushed_commits(repo)
+    except GitCommandError:
+        return True  # when in doubt, do not reset
+
+
+def _refresh_clean_clone(repo: git.Repo) -> None:
+    """Fetch and reset a clean clone to the remote default branch."""
+    repo.git.fetch("origin")
+    branch = default_branch(repo)
+    if branch is None:
+        return
+    repo.git.checkout(branch)
+    repo.git.reset("--hard", f"origin/{branch}")
 
 
 def has_unpushed_commits(repo: git.Repo) -> bool:
@@ -75,6 +153,16 @@ def remove_tree(path: Path) -> None:
         func(item)
 
     shutil.rmtree(path, onexc=make_writable_and_retry)
+
+
+def remove_dir_if_empty(path: Path) -> None:
+    """Remove ``path`` when it is an empty ``TARGET_CLONE_DIR_NAME`` folder."""
+    if path.name != TARGET_CLONE_DIR_NAME:
+        return
+    try:
+        path.rmdir()
+    except OSError:
+        pass
 
 
 def open_art_repo(target: str, log: Log, base_dir: Path | None = None) -> git.Repo:
@@ -122,7 +210,12 @@ def default_branch(repo: git.Repo) -> str | None:
 
 
 def is_tool_checkout(root: Path) -> bool:
-    """Return True if ``root`` is a checkout of github-pixel-artworks itself."""
+    """Return True if ``root`` itself is a checkout of github-pixel-artworks.
+
+    Only ``root`` is checked, not its parents, so a URL-target clone living in
+    ``target_cloned_repo/<repo>`` inside this project is not treated as the
+    tool: it is a separate git repository.
+    """
     return (root / TOOL_MARKER).is_file()
 
 

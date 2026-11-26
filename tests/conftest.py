@@ -1,7 +1,6 @@
 """Shared pytest fixtures."""
 
 import subprocess
-import tempfile
 import urllib.error
 from pathlib import Path
 
@@ -48,11 +47,11 @@ def global_git_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture(autouse=True)
-def temp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Where ``tempfile`` puts temporary clones during a test, instead of the real temp dir."""
-    path = tmp_path / "tmp"
+def clone_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Project root used for URL-target clones during a test, not the real checkout."""
+    path = tmp_path / "tool-root"
     path.mkdir()
-    monkeypatch.setattr(tempfile, "tempdir", str(path))
+    monkeypatch.setattr("github_pixel_artworks.art_repo.tool_project_root", lambda: path)
     return path
 
 

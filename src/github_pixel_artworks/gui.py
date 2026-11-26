@@ -17,7 +17,7 @@ from tkinter.scrolledtext import ScrolledText
 
 import git
 
-from .art_repo import is_remote_url, push_branch, remove_tree
+from .art_repo import is_remote_url, push_branch, remove_dir_if_empty, remove_tree
 from .artwork import Grid, count_commits, drawing_path, level_color, load_grid, save_grid
 from .config import (
     ACTIONS_PANE_MIN_WIDTH,
@@ -539,7 +539,7 @@ class PixelArtGUI:
         threading.Thread(target=generate, daemon=True).start()
 
     def _set_push_target(self, checkout: Path, branch: str | None, temporary: bool) -> None:
-        """Enable Push for ``branch`` of ``checkout``; a temporary clone goes after the push."""
+        """Enable Push for ``branch`` of ``checkout``; a URL-target clone goes after the push."""
         self._push_target = (checkout, branch, temporary) if branch else None
         self.push_button.config(state=tk.NORMAL if branch else tk.DISABLED)
 
@@ -560,8 +560,10 @@ class PixelArtGUI:
                     repo.close()
                 pushed = True
                 if temporary:
-                    remove_tree(checkout.parent)
-                    self._queue_log(f"Removed the temporary clone {checkout}.")
+                    parent = checkout.parent
+                    remove_tree(checkout)
+                    remove_dir_if_empty(parent)
+                    self._queue_log(f"Removed the clone {checkout}.")
             except Exception as error:  # report any failure in the log
                 self._queue_log(f"Error: push failed: {error}")
             finally:
@@ -572,7 +574,7 @@ class PixelArtGUI:
         threading.Thread(target=push, daemon=True).start()
 
     def _after_push(self, clone_removed: bool) -> None:
-        """Re-enable Push, unless the temporary clone it pushed from is gone."""
+        """Re-enable Push, unless the URL-target clone it pushed from is gone."""
         if clone_removed:
             self._push_target = None
         self.push_button.config(state=tk.DISABLED if clone_removed else tk.NORMAL)

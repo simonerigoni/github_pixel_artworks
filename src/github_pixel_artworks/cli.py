@@ -169,7 +169,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-t",
         "--target-repo",
         help="A repository you own, e.g. your profile README repository "
-        "https://github.com/<username>/<username>: a GitHub URL (cloned into a temporary folder) or a "
+        "https://github.com/<username>/<username>: a GitHub URL (cloned into "
+        "target_cloned_repo/<repo> at the tool's project root) or a "
         "local path. Empty commits go on its default branch. Default: the profile README "
         "repository of your GitHub user, from git config github.user, a no-reply "
         "user.email, a login-shaped user.name, GitHub's commit search by user.email, or gh.",
@@ -178,8 +179,8 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument(
         "--keep-clone",
         action="store_true",
-        help="Keep the temporary clone of a URL target. By default it is deleted once "
-        "nothing in it is unpushed, e.g. after --push.",
+        help="Keep the clone of a URL target in target_cloned_repo/. By default it is "
+        "deleted once nothing in it is unpushed, e.g. after --push.",
     )
     target.add_argument(
         "--art-branch",

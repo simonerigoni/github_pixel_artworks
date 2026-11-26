@@ -12,13 +12,14 @@ from git.exc import GitCommandError
 
 from .art_repo import (
     Log,
-    clone_to_temp,
+    clone_url_target,
     default_branch,
     has_unpushed_commits,
     is_remote_url,
     is_tool_checkout,
     open_art_repo,
     push_branch,
+    remove_dir_if_empty,
     remove_tree,
 )
 from .artwork import Grid, count_commits, validate_grid
@@ -72,10 +73,11 @@ def apply_drawing(
     """Create the backdated commits that draw ``grid`` and return how many were made.
 
     ``target_repo`` is the art repository: a local path, or a URL that is cloned
-    into a new temporary folder (see ``clone_to_temp``). The temporary clone is
-    deleted at the end unless it holds art commits that are not pushed yet (no
-    ``push``, or a failed push) or ``keep_clone`` is set; a kept clone is logged
-    and passed to ``on_clone_kept``. A local path is never deleted. The start is ``start_date`` or, if that is None,
+    into ``target_cloned_repo/<repo>`` at the tool's project root (see
+    ``clone_url_target``). The clone is deleted at the end unless it holds art
+    commits that are not pushed yet (no ``push``, or a failed push) or
+    ``keep_clone`` is set; a kept clone is logged and passed to
+    ``on_clone_kept``. A local path is never deleted. The start is ``start_date`` or, if that is None,
     the first Sunday of ``year`` plus ``offset_weeks`` (at most ``MAX_WEEKS``;
     negative values reach into the previous year). Each pixel is committed
     ``level * multiplier`` times at 12:00 UTC on its day.
@@ -126,11 +128,11 @@ def apply_drawing(
         return _draw(open_art_repo(target_repo, log), grid, start_date, multiplier, options)
     if resolve_identity() is None:
         raise MissingIdentityError()
-    repo = clone_to_temp(target_repo, log)
+    repo = clone_url_target(target_repo, log)
     try:
         return _draw(repo, grid, start_date, multiplier, options)
     finally:
-        _finish_temp_clone(repo, keep_clone, on_clone_kept, log)
+        _finish_url_clone(repo, keep_clone, on_clone_kept, log)
 
 
 @dataclass(frozen=True)
@@ -201,21 +203,23 @@ def _draw(
     return total
 
 
-def _finish_temp_clone(
+def _finish_url_clone(
     repo: git.Repo, keep: bool, on_kept: Callable[[Path], None] | None, log: Log
 ) -> None:
-    """Delete a temporary clone, unless asked to keep it or it holds unpushed art."""
+    """Delete a URL-target clone, unless asked to keep it or it holds unpushed art."""
     path = Path(str(repo.working_tree_dir))
     unpushed = _has_unpushed(repo)
     repo.close()
     if keep or unpushed:
         reason = "as asked" if keep else "because it holds art commits that are not pushed yet"
-        log(f"Kept the temporary clone at {path} {reason}. Delete it once the art is pushed.")
+        log(f"Kept the clone at {path} {reason}. Delete it once the art is pushed.")
         if on_kept:
             on_kept(path)
         return
-    remove_tree(path.parent)
-    log(f"Removed the temporary clone {path}.")
+    parent = path.parent
+    remove_tree(path)
+    remove_dir_if_empty(parent)
+    log(f"Removed the clone {path}.")
 
 
 def _has_unpushed(repo: git.Repo) -> bool:
