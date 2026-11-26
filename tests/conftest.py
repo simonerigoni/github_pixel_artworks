@@ -1,5 +1,6 @@
 """Shared pytest fixtures."""
 
+import subprocess
 import urllib.error
 from pathlib import Path
 
@@ -17,6 +18,41 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
         raise urllib.error.URLError("network disabled in tests")
 
     monkeypatch.setattr("urllib.request.urlopen", no_network)
+
+
+@pytest.fixture(autouse=True)
+def global_git_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty global git config, and no ``gh``, so no test sees the real user's settings."""
+    path = tmp_path / "gitconfig"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setattr("github_pixel_artworks.github.GH_COMMAND", "gh-not-installed-in-tests")
+    return path
+
+
+@pytest.fixture
+def set_global_git_config(global_git_config: Path):
+    """Set a key in the isolated global git config."""
+
+    def set_value(key: str, value: str) -> None:
+        subprocess.run(["git", "config", "--file", str(global_git_config), key, value], check=True)
+
+    return set_value
+
+
+@pytest.fixture
+def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Install a fake ``gh`` that runs the given shell snippet."""
+
+    def install(script: str) -> None:
+        path = tmp_path / "bin" / "gh"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(f"#!/bin/sh\n{script}\n", encoding="utf-8")
+        path.chmod(0o755)
+        monkeypatch.setattr("github_pixel_artworks.github.GH_COMMAND", str(path))
+
+    return install
 
 
 @pytest.fixture

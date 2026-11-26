@@ -16,21 +16,64 @@ import git
 import pytest
 
 from github_pixel_artworks import gui
-from github_pixel_artworks.config import EMPTY_COLOR, LEVEL_COLORS
+from github_pixel_artworks.config import (
+    ACTIONS_PANE_MIN_WIDTH,
+    CELL_SIZE,
+    DRAWINGS_PANE_MIN_WIDTH,
+    EDITOR_PANE_MIN_WIDTH,
+    EMPTY_COLOR,
+    LEVEL_COLORS,
+    MAX_WEEKS,
+)
+
+LOG_MIN_HEIGHT = 40  # pixels: a few lines of the Log stay readable
 
 
-@pytest.fixture
-def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[gui.PixelArtGUI]:
+def new_root() -> tk.Tk:
     try:
-        root = tk.Tk()
+        return tk.Tk()
     except tk.TclError:
         if os.environ.get("CI"):
             pytest.fail("Tk could not start on CI: the virtual display (pytest-xvfb) is missing")
         pytest.skip("no display available for Tk")
+
+
+@pytest.fixture
+def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[gui.PixelArtGUI]:
+    root = new_root()
     root.withdraw()
     monkeypatch.setattr(gui, "DATA_DIR", tmp_path / "data")
     yield gui.PixelArtGUI(root)
     root.destroy()
+
+
+@pytest.fixture
+def window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[gui.PixelArtGUI]:
+    """The editor shown on screen, as a user sees it."""
+    root = new_root()
+    monkeypatch.setattr(gui, "DATA_DIR", tmp_path / "data")
+    app = gui.PixelArtGUI(root)
+    settle(root)
+    yield app
+    root.destroy()
+
+
+def settle(root: tk.Tk) -> None:
+    """Let Tk map the window and finish every pending layout pass."""
+    for _ in range(5):
+        root.update_idletasks()
+        root.update()
+
+
+def resize(app: gui.PixelArtGUI, width: int, height: int) -> None:
+    app.root.geometry(f"{width}x{height}")
+    settle(app.root)
+
+
+def pane_widths(app: gui.PixelArtGUI) -> tuple[int, int, int]:
+    """Widths of the drawings, editor and actions panes."""
+    drawings, editor, actions = (app._panes.nametowidget(name) for name in app._panes.panes())
+    return drawings.winfo_width(), editor.winfo_width(), actions.winfo_width()
 
 
 def at(row: int, column: int) -> tk.Event:
@@ -215,3 +258,124 @@ class TestGenerateAndPush:
         assert git_repo.head.commit == head
         assert "Dry run: would create 2 commits" in app.log_text.get("1.0", tk.END)
         assert str(app.push_button.cget("state")) == tk.DISABLED
+
+
+class TestLayout:
+    @pytest.mark.parametrize(("width", "height"), [(1024, 420), (1600, 900), (1920, 1080)])
+    def test_every_pane_is_visible_after_startup(
+        self, window: gui.PixelArtGUI, width: int, height: int
+    ) -> None:
+        resize(window, width, height)
+
+        drawings, editor, actions = pane_widths(window)
+
+        assert actions >= ACTIONS_PANE_MIN_WIDTH
+        assert editor >= EDITOR_PANE_MIN_WIDTH
+        assert drawings >= DRAWINGS_PANE_MIN_WIDTH
+        assert drawings + editor + actions <= window._panes.winfo_width()
+
+    def test_shrinking_the_window_keeps_the_actions_pane(self, window: gui.PixelArtGUI) -> None:
+        resize(window, 1920, 1080)
+
+        resize(window, 1024, 420)
+
+        assert pane_widths(window)[2] >= ACTIONS_PANE_MIN_WIDTH
+
+    def test_growing_the_window_widens_only_the_grid(self, window: gui.PixelArtGUI) -> None:
+        resize(window, 1024, 420)
+        drawings, editor, actions = pane_widths(window)
+
+        resize(window, 1920, 1080)
+
+        assert pane_widths(window)[0] == drawings
+        assert pane_widths(window)[1] > editor
+        assert pane_widths(window)[2] == actions
+
+    def test_a_full_year_of_weeks_fits_in_a_wide_window(self, window: gui.PixelArtGUI) -> None:
+        window._resize_grid(MAX_WEEKS)
+
+        resize(window, 1600, 900)
+
+        assert pane_widths(window)[1] >= MAX_WEEKS * CELL_SIZE
+
+    def test_a_full_year_on_a_small_window_scrolls_instead_of_hiding_actions(
+        self, window: gui.PixelArtGUI
+    ) -> None:
+        resize(window, 1024, 420)
+
+        window._resize_grid(MAX_WEEKS)
+        settle(window.root)
+
+        assert pane_widths(window)[2] >= ACTIONS_PANE_MIN_WIDTH
+        assert window.canvas.xview() != (0.0, 1.0)
+
+    def test_every_action_and_the_log_fit_a_small_window(self, window: gui.PixelArtGUI) -> None:
+        resize(window, 1024, 420)
+        bottom = window.root.winfo_rooty() + window.root.winfo_height()
+
+        for widget in (
+            window.generate_button,
+            window.push_button,
+            window.force_button,
+            window.log_text,
+        ):
+            assert widget.winfo_ismapped()
+            assert widget.winfo_rooty() + widget.winfo_height() <= bottom
+        assert window.log_text.winfo_height() >= LOG_MIN_HEIGHT
+
+    def test_the_art_branch_row_only_shows_when_enabled(self, window: gui.PixelArtGUI) -> None:
+        assert not window.art_branch_details.winfo_ismapped()
+
+        window.use_art_branch_var.set(True)
+        window._toggle_art_branch()
+        settle(window.root)
+
+        assert window.art_branch_details.winfo_ismapped()
+
+    def test_the_first_size_fits_a_small_screen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = new_root()
+        monkeypatch.setattr(gui, "DATA_DIR", tmp_path / "data")
+        monkeypatch.setattr(root, "winfo_screenwidth", lambda: 1024)
+        monkeypatch.setattr(root, "winfo_screenheight", lambda: 600)
+
+        app = gui.PixelArtGUI(root)
+        settle(root)
+
+        assert root.winfo_width() <= 1024
+        assert root.winfo_height() <= 600
+        assert pane_widths(app)[2] >= ACTIONS_PANE_MIN_WIDTH
+        root.destroy()
+
+
+class TestTargetDefault:
+    def test_prefills_the_detected_profile_repository(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, set_global_git_config
+    ) -> None:
+        set_global_git_config("github.user", "octocat")
+        monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+        monkeypatch.setattr(gui, "DATA_DIR", tmp_path / "data")
+        root = new_root()
+        root.withdraw()
+
+        app = gui.PixelArtGUI(root)
+        app._drain_queues()
+
+        assert app.target_repo_var.get() == "https://github.com/octocat/octocat"
+        assert "git config github.user" in app.log_text.get("1.0", tk.END)
+        root.destroy()
+
+    def test_stays_empty_when_nothing_is_detected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+        monkeypatch.setattr(gui, "DATA_DIR", tmp_path / "data")
+        root = new_root()
+        root.withdraw()
+
+        app = gui.PixelArtGUI(root)
+        app._drain_queues()
+
+        assert app.target_repo_var.get() == ""
+        root.destroy()
