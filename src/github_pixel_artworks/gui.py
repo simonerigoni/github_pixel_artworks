@@ -34,6 +34,7 @@ from .config import (
     DRAWINGS_PANE_MIN_WIDTH,
     DRAWINGS_PANE_WIDTH,
     EDITOR_PANE_MIN_WIDTH,
+    GENERATE_BUTTON_TEXT,
     GRID_BACKGROUND,
     HINT_COLOR,
     HINT_PADDING,
@@ -234,7 +235,7 @@ class PixelArtGUI:
         generate_row = ttk.Frame(actions)
         generate_row.pack(fill=tk.X, pady=2)
         self.generate_button = ttk.Button(
-            generate_row, text="Generate Art", command=self._on_generate_clicked
+            generate_row, text=GENERATE_BUTTON_TEXT, command=self._on_generate_clicked
         )
         self.generate_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.dry_run_button = ttk.Button(
@@ -484,7 +485,7 @@ class PixelArtGUI:
         target = self.target_repo_var.get().strip()
         if not target:
             messagebox.showerror(
-                "Generate Art",
+                GENERATE_BUTTON_TEXT,
                 "Enter the target repository first: a repository you own, e.g. your "
                 "profile README repository https://github.com/<username>/<username>.",
             )
@@ -492,12 +493,12 @@ class PixelArtGUI:
         try:
             year, offset = self.year_var.get(), self.offset_var.get()
         except tk.TclError:
-            messagebox.showerror("Generate Art", "Year and offset must be whole numbers.")
+            messagebox.showerror(GENERATE_BUTTON_TEXT, "Year and offset must be whole numbers.")
             return
         art_branch = self.art_branch_var.get().strip() if self.use_art_branch_var.get() else None
         where = f"branch '{art_branch}'" if art_branch else "the default branch"
         if not dry_run and not messagebox.askyesno(
-            "Generate Art",
+            GENERATE_BUTTON_TEXT,
             f"This adds empty, backdated commits on {where} of:\n{target}\n\nContinue?",
         ):
             return

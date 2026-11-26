@@ -130,7 +130,7 @@ Main options:
 uv run github-pixel-artworks-gui
 ```
 
-Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. The target repository is pre-filled with your profile README repository when your GitHub username is detected (see [Quick start](#quick-start)); otherwise enter one, for example `https://github.com/<username>/<username>`. **Dry run** reports how many commits are new, **Generate Art** adds them on the default branch, and **Push to GitHub** pushes them and then deletes the clone of a URL target in `target_cloned_repo/` (kept until then, with its path in the log). An art branch is available as an advanced option.
+Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. The target repository is pre-filled with your profile README repository when your GitHub username is detected (see [Quick start](#quick-start)); otherwise enter one, for example `https://github.com/<username>/<username>`. **Dry run** reports how many commits are new, **Generate Commits** adds them on the default branch, and **Push to GitHub** pushes them and then deletes the clone of a URL target in `target_cloned_repo/` (kept until then, with its path in the log). An art branch is available as an advanced option.
 
 ![GUI editor with data/space_invaders.txt loaded](images/gui_editor.png)
 
