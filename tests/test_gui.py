@@ -24,6 +24,7 @@ from github_pixel_artworks.config import (
     EMPTY_COLOR,
     LEVEL_COLORS,
     MAX_WEEKS,
+    TARGET_CLONE_DIR_NAME,
 )
 
 LOG_MIN_HEIGHT = 40  # pixels: a few lines of the Log stay readable
@@ -242,6 +243,31 @@ class TestGenerateAndPush:
         assert answers == []
         assert len(list(git_repo.iter_commits("main"))) == 1 + 2
         assert remote.heads.main.commit == git_repo.heads.main.commit
+
+    def test_push_publishes_a_url_target_and_removes_its_clone(
+        self,
+        app: gui.PixelArtGUI,
+        answers: list[str],
+        empty_remote: str,
+        git_identity: None,
+        clone_root: Path,
+    ) -> None:
+        app.target_repo_var.set(empty_remote)
+        app.year_var.set(2026)
+        paint(app, 2, 0, 0)
+
+        app._on_generate_clicked()
+        app._drain_queues()
+        parent = clone_root / TARGET_CLONE_DIR_NAME
+        assert list(parent.iterdir()) and all(path.is_dir() for path in parent.iterdir())
+        app._on_push_clicked()
+        app._drain_queues()
+
+        remote = git.Repo(empty_remote.removeprefix("file://"))
+        assert answers == []
+        assert len(list(remote.iter_commits("main"))) == 2
+        assert not parent.exists()
+        assert str(app.push_button.cget("state")) == tk.DISABLED
 
     def test_dry_run_reports_the_plan_without_committing(
         self, app: gui.PixelArtGUI, answers: list[str], git_repo: git.Repo

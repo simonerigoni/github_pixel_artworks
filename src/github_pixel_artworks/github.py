@@ -20,7 +20,6 @@ from .config import (
     FETCH_TIMEOUT_SECONDS,
     GH_COMMAND,
     GH_TIMEOUT_SECONDS,
-    GIT_CONFIG_TIMEOUT_SECONDS,
     GITHUB_REMOTE_PREFIXES,
     GITHUB_URL,
     GITHUB_USER_CONFIG_KEY,
@@ -30,6 +29,7 @@ from .config import (
     TOP_LEVEL,
     USERNAME_RE,
 )
+from .identity import git_config
 
 
 def is_valid_github_username(username: str) -> bool:
@@ -146,14 +146,14 @@ def detect_github_username() -> tuple[str, str] | None:
 
     Only the last two use the network, and any failure or rate limit means no hit.
     """
-    user = _git_config(GITHUB_USER_CONFIG_KEY)
+    user = git_config(GITHUB_USER_CONFIG_KEY)
     if user and is_valid_github_username(user):
         return user, f"git config {GITHUB_USER_CONFIG_KEY}"
-    email = _git_config("user.email")
+    email = git_config("user.email")
     match = NOREPLY_RE.fullmatch(email) if email else None
     if match and is_valid_github_username(match["login"]):
         return match["login"], "the no-reply git user.email"
-    name = _git_config("user.name")
+    name = git_config("user.name")
     if name and is_valid_github_username(name):
         return name, f"git user.name; set {GITHUB_USER_CONFIG_KEY} to be sure"
     login = _commit_search_login(email) if email else None
@@ -163,11 +163,6 @@ def detect_github_username() -> tuple[str, str] | None:
     if login and is_valid_github_username(login):
         return login, "gh api user"
     return None
-
-
-def _git_config(key: str) -> str | None:
-    """Return the git setting ``key`` in effect in the current directory, or None."""
-    return _run(["git", "config", "--get", key], GIT_CONFIG_TIMEOUT_SECONDS)
 
 
 def _commit_search_login(email: str) -> str | None:

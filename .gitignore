@@ -3,6 +3,9 @@
 # Temp stuff
 temp/
 
+# Clone of a URL target (created at runtime, deleted after a successful push)
+target_cloned_repo/
+
 # Python compiled files
 *.pyc
 

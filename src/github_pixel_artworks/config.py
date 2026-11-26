@@ -73,6 +73,11 @@ GH_COMMAND = "gh"
 """GitHub CLI, asked for the signed-in login when installed (``gh api user``)."""
 GH_TIMEOUT_SECONDS = 5
 GIT_CONFIG_TIMEOUT_SECONDS = 5
+IDENTITY_FIX_HINT = (
+    'Set it once with: git config --global user.name "Your Name" and '
+    "git config --global user.email <an email on your GitHub account>"
+)
+"""How to fix a missing git identity, shown before anything is cloned or committed."""
 COMMIT_SEARCH_URL = "https://api.github.com/search/commits?q={query}"
 """GitHub's public commit search, asked unauthenticated for the login behind ``user.email``."""
 COMMIT_SEARCH_QUERY = "author-email:{email}"
@@ -101,6 +106,13 @@ NOREPLY_RE = re.compile(r"(?:\d+\+)?(?P<login>[^@+]+)@users\.noreply\.github\.co
 """GitHub's no-reply commit address, ``ID+login@users.noreply.github.com`` or ``login@...``."""
 
 # Target repository and art commits ------------------------------------------
+
+TARGET_CLONE_DIR_NAME = "target_cloned_repo"
+"""Folder at the tool's project root that a URL target is cloned into, as ``<this>/<repo>``.
+
+The project root is found from the package location (see ``art_repo.tool_project_root``),
+so the path does not depend on the working directory. The folder is gitignored.
+"""
 
 URL_SCHEMES = ("https://", "http://", "ssh://", "git://", "file://")
 """Targets starting with one of these are cloned rather than opened."""

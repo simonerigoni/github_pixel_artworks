@@ -13,13 +13,14 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
   - `config.py`: every named constant (levels, palette, year range, GitHub URLs and regexes, commit marker, exit codes, GUI and diagram layout), grouped by topic
   - `artwork.py`: the 7-row file format, intensity levels, colours, drawing paths
   - `dates.py`: Sunday alignment, the auto-align window, pixel timestamps
-  - `art_repo.py`: opening or cloning the target repository, its default branch, pushing
+  - `art_repo.py`: opening the target repository or cloning a URL into `target_cloned_repo/<repo>` at the project root (`TARGET_CLONE_DIR_NAME`, found from the package location), leftover-clone reuse, its default branch, unpushed-commit check, pushing, and `remove_tree` (handles read-only `.git` files on Windows)
+  - `identity.py`: `git_config` (effective settings in a folder) and `resolve_identity`: `GIT_AUTHOR_*`, then the target's local config, then the settings where the tool runs; passed to `commit-tree` as author and committer env
   - `github.py`: username validation and detection (github.user, no-reply email, login-shaped user.name, unauthenticated commit search by email, optional gh), the contribution calendar, remote URLs, email and fork checks
-  - `painter.py`: `preview` and `apply_drawing`, which both front ends call
+  - `painter.py`: `preview` and `apply_drawing`, which both front ends call; it fails with `MissingIdentityError` before cloning or committing, and deletes a URL-target clone unless it holds unpushed art or `keep_clone` is set
   - `cli.py`, `gui.py`: the front ends
 - `data/`: example artworks (see `data/DATA.md`), also where the GUI saves
 - `images/`: README figures; regenerate `grid_diagram.svg` with `uv run python scripts/render_grid_diagram.py`
-- `tests/`: one test module per source module; `conftest.py` provides a throwaway `git_repo`, bare `file://` remotes, an empty global git config, an empty working directory, no `gh`, and blocks the network
+- `tests/`: one test module per source module; `conftest.py` provides a throwaway `git_repo`, bare `file://` remotes, an empty global git config and HOME, no git identity env, an empty working directory, a per-test project root for URL-target clones, a `source_checkout` with a local-only identity, no `gh`, and blocks the network
 
 ## Workflow
 
@@ -43,5 +44,5 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
 - Branch names are validated with `git check-ref-format` and may not start with `-`.
 - GUI worker threads never touch Tk; they use `_queue_log` / `_call_in_ui`.
 - Art commits are empty: never write files, never commit the index (staged work stays staged). Earlier art commits (message prefix `pixel art `) count towards each pixel, so re-runs are idempotent.
-- By default commit only on the target repository's default branch, and refuse this project's checkout (`is_tool_checkout`). The art branch is advanced and always warns that it does not count until it is the default.
+- By default commit only on the target repository's default branch, and refuse this project's checkout (`is_tool_checkout` checks only the target root, so a clone in `target_cloned_repo/` is not refused). The art branch is advanced and always warns that it does not count until it is the default.
 - GitHub only counts commits on the default branch (or `gh-pages`), with a linked email, outside forks; keep the README and the warnings accurate about that.

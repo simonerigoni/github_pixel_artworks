@@ -17,7 +17,7 @@ from tkinter.scrolledtext import ScrolledText
 
 import git
 
-from .art_repo import local_checkout_path, push_branch
+from .art_repo import is_remote_url, push_branch, remove_dir_if_empty, remove_tree
 from .artwork import Grid, count_commits, drawing_path, level_color, load_grid, save_grid
 from .config import (
     ACTIONS_PANE_MIN_WIDTH,
@@ -67,7 +67,7 @@ class PixelArtGUI:
         self.grid: Grid = _empty_grid(DEFAULT_COLUMNS)
         self.level_var = tk.IntVar(value=1)
         self._stroke_value = 1
-        self._push_target: tuple[Path, str] | None = None
+        self._push_target: tuple[Path, str, bool] | None = None
         self._hints: list[ttk.Label] = []
         self._panes_placed = False
         self._log_queue: queue.Queue[str] = queue.Queue()
@@ -509,6 +509,8 @@ class PixelArtGUI:
         self.push_button.config(state=tk.DISABLED)
         self.status_var.set("Checking..." if dry_run else "Generating...")
 
+        kept: list[Path] = []
+
         def generate() -> None:
             try:
                 apply_drawing(
@@ -519,12 +521,14 @@ class PixelArtGUI:
                     art_branch=art_branch,
                     force=force,
                     dry_run=dry_run,
+                    on_clone_kept=kept.append,
                     log=self._queue_log,
                 )
-                if not dry_run:
-                    checkout = local_checkout_path(target)
+                temporary = is_remote_url(target)
+                checkout = kept[0] if temporary and kept else None if temporary else Path(target)
+                if not dry_run and checkout is not None:
                     branch = art_branch or _active_branch(git.Repo(checkout))
-                    self._call_in_ui(lambda: self._set_push_target(checkout, branch))
+                    self._call_in_ui(lambda: self._set_push_target(checkout, branch, temporary))
             except Exception as error:  # report any failure in the log
                 self._queue_log(f"Error: {error}")
             finally:
@@ -534,27 +538,46 @@ class PixelArtGUI:
 
         threading.Thread(target=generate, daemon=True).start()
 
-    def _set_push_target(self, checkout: Path, branch: str | None) -> None:
-        self._push_target = (checkout, branch) if branch else None
+    def _set_push_target(self, checkout: Path, branch: str | None, temporary: bool) -> None:
+        """Enable Push for ``branch`` of ``checkout``; a URL-target clone goes after the push."""
+        self._push_target = (checkout, branch, temporary) if branch else None
         self.push_button.config(state=tk.NORMAL if branch else tk.DISABLED)
 
     def _on_push_clicked(self) -> None:
         if self._push_target is None:
             return
-        checkout, branch = self._push_target
+        checkout, branch, temporary = self._push_target
         self.push_button.config(state=tk.DISABLED)
         self.status_var.set("Pushing...")
 
         def push() -> None:
+            pushed = False
             try:
-                push_branch(git.Repo(checkout), branch, self._queue_log)
+                repo = git.Repo(checkout)
+                try:
+                    push_branch(repo, branch, self._queue_log)
+                finally:
+                    repo.close()
+                pushed = True
+                if temporary:
+                    parent = checkout.parent
+                    remove_tree(checkout)
+                    remove_dir_if_empty(parent)
+                    self._queue_log(f"Removed the clone {checkout}.")
             except Exception as error:  # report any failure in the log
                 self._queue_log(f"Error: push failed: {error}")
             finally:
-                self._call_in_ui(lambda: self.push_button.config(state=tk.NORMAL))
+                done = temporary and pushed
+                self._call_in_ui(lambda: self._after_push(done))
                 self._call_in_ui(lambda: self.status_var.set(STATUS_READY))
 
         threading.Thread(target=push, daemon=True).start()
+
+    def _after_push(self, clone_removed: bool) -> None:
+        """Re-enable Push, unless the URL-target clone it pushed from is gone."""
+        if clone_removed:
+            self._push_target = None
+        self.push_button.config(state=tk.DISABLED if clone_removed else tk.NORMAL)
 
     # Log and thread hand-off -----------------------------------------------
 
