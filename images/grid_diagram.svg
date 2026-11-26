@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="606" height="374" viewBox="0 0 606 374" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#24292f">
+<rect width="606" height="374" fill="#ffffff"/>
+<text x="16" y="28" font-weight="bold">data/heart.txt with --year 2026</text>
+<text x="16" y="50" fill="#57606a">Each column is a week (starting on Sunday), each row a weekday.</text>
+<text x="84" y="121.68" text-anchor="end">Sun</text>
+<text x="84" y="151.68" text-anchor="end">Mon</text>
+<text x="84" y="181.68" text-anchor="end">Tue</text>
+<text x="84" y="211.68" text-anchor="end">Wed</text>
+<text x="84" y="241.68" text-anchor="end">Thu</text>
+<text x="84" y="271.68" text-anchor="end">Fri</text>
+<text x="84" y="301.68" text-anchor="end">Sat</text>
+<text x="96" y="76" fill="#57606a">Jan</text>
+<text x="109.0" y="96" text-anchor="middle" fill="#57606a">4</text>
+<rect x="96" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="96" y="134" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="96" y="164" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="96" y="194" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="96" y="224" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="96" y="254" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="96" y="284" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="139.0" y="96" text-anchor="middle" fill="#57606a">11</text>
+<rect x="126" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="126" y="134" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="126" y="164" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="126" y="194" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="126" y="224" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="126" y="254" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="126" y="284" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="169.0" y="96" text-anchor="middle" fill="#57606a">18</text>
+<rect x="156" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="156" y="134" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="156" y="164" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="156" y="194" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="156" y="224" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="156" y="254" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="156" y="284" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="199.0" y="96" text-anchor="middle" fill="#57606a">25</text>
+<rect x="186" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="186" y="134" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="186" y="164" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="186" y="194" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="186" y="224" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="186" y="254" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="186" y="284" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="216" y="76" fill="#57606a">Feb</text>
+<text x="229.0" y="96" text-anchor="middle" fill="#57606a">1</text>
+<rect x="216" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="216" y="134" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="216" y="164" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="216" y="194" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="216" y="224" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="216" y="254" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="216" y="284" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="259.0" y="96" text-anchor="middle" fill="#57606a">8</text>
+<rect x="246" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="246" y="134" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="246" y="164" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="246" y="194" width="26" height="26" rx="4" fill="#9be9a8"/>
+<rect x="246" y="224" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="246" y="254" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="246" y="284" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="289.0" y="96" text-anchor="middle" fill="#57606a">15</text>
+<rect x="276" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="276" y="134" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="276" y="164" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="276" y="194" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="276" y="224" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="276" y="254" width="26" height="26" rx="4" fill="#ebedf0"/>
+<rect x="276" y="284" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="342" y="96" font-weight="bold">Character: commits per day</text>
+<rect x="342" y="104" width="26" height="26" rx="4" fill="#ebedf0"/>
+<text x="378" y="121.68">space . x 0: no commits</text>
+<rect x="342" y="134" width="26" height="26" rx="4" fill="#9be9a8"/>
+<text x="378" y="151.68">* 1: 1 x multiplier</text>
+<rect x="342" y="164" width="26" height="26" rx="4" fill="#40c463"/>
+<text x="378" y="181.68">2: 2 x multiplier</text>
+<rect x="342" y="194" width="26" height="26" rx="4" fill="#30a14e"/>
+<text x="378" y="211.68">3: 3 x multiplier</text>
+<rect x="342" y="224" width="26" height="26" rx="4" fill="#216e39"/>
+<text x="378" y="241.68">4 # H: 4 x multiplier</text>
+<text x="16" y="354" fill="#57606a">Span: 2026-01-04 (Sun) to 2026-02-21 (Sat). Each commit is dated 12:00 UTC on its day.</text>
+</svg>
