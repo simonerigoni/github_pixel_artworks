@@ -1,5 +1,6 @@
-"""GitHub specifics: usernames, the public contribution calendar and remote URLs."""
+"""GitHub specifics: usernames, the public contribution calendar, remote URLs and repo checks."""
 
+import json
 import math
 import re
 import urllib.error
@@ -7,19 +8,18 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 
-import git
-from git.exc import GitCommandError
-
 from .artwork import TOP_LEVEL
 
 FETCH_TIMEOUT_SECONDS = 15
-DEFAULT_FALLBACK_REPO_NAME = "github_pixel_artworks"
 
 _USERNAME_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}")
 """1 to 39 letters, digits or single inner hyphens."""
 
 _DAY_COUNT_RE = re.compile(r">\s*([\d,]+) contributions? on ")
 """Day tooltip text, e.g. ``12 contributions on May 2nd.`` (``No contributions`` is skipped)."""
+
+_NOREPLY_RE = re.compile(r"(?:\d+\+)?(?P<login>[^@+]+)@users\.noreply\.github\.com", re.IGNORECASE)
+"""GitHub's no-reply commit address, ``ID+login@users.noreply.github.com`` or ``login@...``."""
 
 _GITHUB_REMOTE_PREFIXES = (
     "git@github.com:",
@@ -79,23 +79,45 @@ def normalize_github_https_url(remote_url: str) -> str | None:
     return None
 
 
-def resolve_github_repo_url(
-    repo: git.Repo,
-    username: str | None = None,
-    fallback_repo_name: str = DEFAULT_FALLBACK_REPO_NAME,
-) -> str | None:
-    """Return the GitHub URL of ``repo``, best effort.
+def github_slug(remote_url: str) -> tuple[str, str] | None:
+    """Return ``(owner, repo)`` for a GitHub repository URL, else None."""
+    url = normalize_github_https_url(remote_url)
+    if url is None:
+        return None
+    parts = url.removeprefix("https://github.com/").split("/")
+    return (parts[0], parts[1]) if len(parts) == 2 and all(parts) else None
 
-    Uses the ``origin`` remote, then any other GitHub remote, then
-    ``https://github.com/<username>/<fallback_repo_name>`` when ``username`` is given.
+
+def commit_email_warning(email: str | None, login: str | None) -> str | None:
+    """Return a warning if commits made with ``email`` would not count for ``login``.
+
+    GitHub credits a commit to the account its email is linked to. An unset email
+    never counts, and a no-reply address names its account, so a different login
+    there is a mismatch. Other addresses cannot be checked without signing in.
     """
-    for remote in sorted(repo.remotes, key=lambda remote: remote.name != "origin"):
-        try:
-            url = normalize_github_https_url(remote.url)
-        except GitCommandError:  # remote without a URL
-            continue
-        if url:
-            return url
-    if username:
-        return f"https://github.com/{username}/{fallback_repo_name}"
+    if not email:
+        return (
+            "git user.email is not set, so GitHub cannot link the commits to you. "
+            "Set it with: git config user.email <an email on your GitHub account>"
+        )
+    match = _NOREPLY_RE.fullmatch(email.strip())
+    if match and login and match["login"].lower() != login.lower():
+        return (
+            f"git user.email {email} is the no-reply address of '{match['login']}', "
+            f"not '{login}', so the art would show on that profile instead."
+        )
     return None
+
+
+def fetch_is_fork(owner: str, repo: str) -> bool | None:
+    """Return whether ``owner/repo`` is a fork, using the public GitHub API.
+
+    Returns None when that is unknown: offline, rate limited, or a private repo.
+    """
+    url = f"https://api.github.com/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}"
+    try:
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.URLError, TimeoutError, ValueError:
+        return None
+    return bool(data.get("fork")) if isinstance(data, dict) else None

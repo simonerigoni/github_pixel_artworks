@@ -2,6 +2,26 @@
 
 [![CI](https://github.com/simonerigoni/github_pixel_artworks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/simonerigoni/github_pixel_artworks/actions/workflows/ci.yml?query=branch%3Amain) [![License](https://img.shields.io/github/license/simonerigoni/github_pixel_artworks)](LICENSE.md) [![Python](https://img.shields.io/badge/python-3.15-blue)](pyproject.toml) [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv) [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit) [![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://renovatebot.com)
 
+## Quick start
+
+1. Create an empty repository on GitHub for the art, for example `<you>/pixel-art`. Use a new repository, not a fork and not a clone of this project.
+2. Draw an artwork into it. The tool clones the repository into `./pixel-art` and commits on its default branch:
+
+   ```bash
+   uv sync
+   uv run github-pixel-artworks -i data/heart.txt --year 2025 --target-repo https://github.com/<you>/pixel-art
+   ```
+
+3. Push, and the art appears on your profile in that year:
+
+   ```bash
+   git -C pixel-art push -u origin main
+   ```
+
+   Adding `--push` to step 2 does the same.
+
+The commits must use an email address connected to your GitHub account (`git config user.email`). The tool warns when it can tell that is not the case.
+
 ## Introduction
 
 A tool that draws pixel art on your GitHub contribution graph. You design a 7-row artwork, one row per weekday and one column per week. The tool then creates empty, backdated commits so that each pixel shows up as a green square on the right day. It comes with a command line interface and a small Tkinter editor.
@@ -66,25 +86,22 @@ Preview where `data/heart.txt` would land in 2020 without committing anything:
 uv run github-pixel-artworks -i data/heart.txt --year 2020 --dry-run
 ```
 
-Draw it on a year-specific branch:
+Draw it into your art repository and push it:
 
 ```bash
-uv run github-pixel-artworks -i data/heart.txt --year 2020 --art-branch artworks-2020 --yes
-git push origin artworks-2020
+uv run github-pixel-artworks -i data/heart.txt --year 2020 --target-repo https://github.com/<you>/pixel-art --push
 ```
-
-GitHub only shows the art once those commits are on the repository's default branch. See [Results](#results).
 
 Main options:
 
 - `-i, --input`: the artwork file (required)
 - `--year`, `--start-date` or `--auto-align`: where the art starts (one is required). `--year` starts on the first Sunday of that year, and `--offset-weeks` shifts it to the right.
-- `--art-branch NAME`: commit on `NAME`, creating it if needed. Uncommitted changes are stashed first, and your branch and changes are restored afterwards. Re-running adds to the existing art.
-- `--in-place`: commit on the current branch
-- `--branch NAME`: without either of the above, create the orphan branch `NAME` (default `pixel-art`)
+- `-t, --target-repo`: your art repository, as a GitHub URL (cloned into a folder of the same name, or reused if it is already there) or a local path. The commits go on its default branch. The tool refuses to draw into a checkout of this project.
+- `--push`: push to `origin` afterwards
 - `--multiplier N`: commits per intensity level (default 1)
 - `--username NAME`: scale the intensity so level 4 matches your darkest existing day
 - `--dry-run`, `--yes`, `--force`: preview only, skip the confirmation, allow a dirty working tree
+- `--art-branch NAME` (advanced): commit on `NAME` instead, creating it if needed, then return to your branch with your uncommitted changes restored. The art only shows on your profile once that branch is merged into the default branch or made the default.
 
 ### GUI
 
@@ -92,7 +109,7 @@ Main options:
 uv run github-pixel-artworks-gui
 ```
 
-Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. **Generate Art** creates the commits, by default on the `artworks-<year>` branch, and **Push to GitHub** pushes that branch.
+Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. Enter your art repository (a GitHub URL or a folder), then **Generate Art** creates the commits on its default branch and **Push to GitHub** pushes them. An art branch is available as an advanced option.
 
 ![GUI editor with data/space_invaders.txt loaded](images/gui_editor.png)
 
@@ -112,13 +129,14 @@ GitHub only counts a commit on your profile if it meets three conditions:
 - it is authored with an email address connected to your account
 - it is not in a fork
 
-So for the art to show, push it to a dedicated repository whose default branch holds the art commits. One way is to make that repository's default branch the art branch. See GitHub's [troubleshooting guide](https://docs.github.com/en/account-and-profile/reference/why-are-my-contributions-not-showing-up-on-my-profile). Contributions in private repositories only appear if you show private contributions on your profile.
+The tool handles these by default. It commits on the default branch of a repository you own, refuses this project's own checkout, and warns when the repository is a fork or `user.email` is unset or is the no-reply address of another account. See GitHub's [troubleshooting guide](https://docs.github.com/en/account-and-profile/reference/why-are-my-contributions-not-showing-up-on-my-profile). Contributions in private repositories only appear if you show private contributions on your profile.
 
 The package is organised as:
 
 - `artwork.py`: the file format and intensity levels
 - `dates.py`: the calendar placement
-- `github.py`: usernames, the contribution calendar and remote URLs
+- `art_repo.py`: finding, cloning and pushing the art repository
+- `github.py`: usernames, the contribution calendar, remote URLs, and the email and fork checks
 - `painter.py`: `apply_drawing`, which creates the commits
 - `cli.py` and `gui.py`: the two front ends
 

@@ -1,20 +1,17 @@
 """Turn an artwork into backdated, empty git commits."""
 
 import os
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import git
-from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
+from git.exc import GitCommandError
 
+from .art_repo import Log, default_branch, is_tool_checkout, open_art_repo, push_branch
 from .artwork import DAYS_PER_WEEK, MAX_WEEKS, Grid, count_commits, validate_grid
 from .dates import get_first_sunday_of_year, pixel_timestamp
-from .github import resolve_github_repo_url
+from .github import commit_email_warning, fetch_is_fork, github_slug
 
-type Log = Callable[[str], None]
-
-DEFAULT_ORPHAN_BRANCH = "pixel-art"
 PROGRESS_EVERY = 10
 """Log a progress line every this many commits."""
 
@@ -40,39 +37,41 @@ def preview(grid: Grid, start_date: datetime, multiplier: int) -> str:
 
 def apply_drawing(
     grid: Grid,
+    *,
+    target_repo: str,
     year: int | None = None,
     start_date: datetime | None = None,
     offset_weeks: int = 0,
-    target_repo: str = ".",
     multiplier: int = 1,
-    in_place: bool = True,
-    force: bool = False,
     art_branch: str | None = None,
     username: str | None = None,
-    branch: str = DEFAULT_ORPHAN_BRANCH,
+    push: bool = False,
+    force: bool = False,
     log: Log = print,
 ) -> int:
     """Create the backdated commits that draw ``grid`` and return how many were made.
 
-    The start is ``start_date`` or, if that is None, the first Sunday of ``year``
-    plus ``offset_weeks`` (at most ``MAX_WEEKS``; negative values reach into the
-    previous year). Each pixel is committed ``level * multiplier`` times at 12:00
-    UTC on its day.
+    ``target_repo`` is the art repository: a local path, or a URL that is cloned
+    into the working directory. The start is ``start_date`` or, if that is None,
+    the first Sunday of ``year`` plus ``offset_weeks`` (at most ``MAX_WEEKS``;
+    negative values reach into the previous year). Each pixel is committed
+    ``level * multiplier`` times at 12:00 UTC on its day.
 
-    Where the commits go:
+    By default the commits go on the repository's default branch, the only place
+    GitHub counts them. A checkout of this tool is refused. With ``art_branch``
+    (advanced) they go on that branch instead, created from HEAD if missing;
+    uncommitted changes are stashed and the original branch and changes are
+    restored afterwards. ``push`` pushes the branch to ``origin`` at the end.
 
-    - ``art_branch``: on that branch, created from HEAD if it does not exist.
-      Uncommitted changes (untracked files included) are stashed first; the
-      original branch and the changes are always restored afterwards.
-    - otherwise ``in_place=True``: on the current branch.
-    - otherwise: on a new orphan branch ``branch`` whose only file is a README.
-      Tracked files leave the working tree; untracked and ignored files stay.
+    Warnings are logged when the commit email or a fork would keep the art off
+    the profile of ``username`` (default: the owner of ``origin``).
 
     Raises:
         ValueError: for an invalid grid, multiplier, offset, branch name or
             missing start.
-        RuntimeError: if ``target_repo`` is not a git repository, has
-            uncommitted changes (unless ``force``), or the orphan branch exists.
+        RuntimeError: if the target is not a git repository, is this tool's
+            checkout, is not on its default branch, or has uncommitted changes
+            (unless ``force``).
     """
     if not grid or not grid[0]:
         log("Nothing to do (empty grid).")
@@ -88,27 +87,39 @@ def apply_drawing(
     log(preview(grid, start_date, multiplier))
     log("")
 
-    repo = _open_repo(target_repo)
-    _validate_branch_name(repo, art_branch or (None if in_place else branch))
+    repo = open_art_repo(target_repo, log)
+    root = Path(str(repo.working_tree_dir))
+    if art_branch:
+        _validate_branch_name(repo, art_branch)
+        log(
+            f"Warning: commits on '{art_branch}' only show on your profile once they are on "
+            "the repository's default branch: merge the branch or make it the default."
+        )
+        branch = art_branch
+    else:
+        _refuse_tool_checkout(root)
+        branch = _require_default_branch(repo, root)
+    for warning in _profile_warnings(repo, username):
+        log(f"Warning: {warning}")
 
-    original_ref = _current_ref(repo)
+    original_ref = _current_ref(repo) if art_branch else None
     stashed = False
     try:
         if art_branch:
             stashed = _stash_changes(repo, art_branch, log)
             _switch_to_branch(repo, art_branch, log)
         _ensure_clean(repo, force)
-        if art_branch or in_place:
-            log(f"Committing on the current branch ({_branch_label(repo)}).")
-        else:
-            _start_orphan_branch(repo, branch, username, log)
-
-        log("Creating backdated commits...")
+        log(f"Creating backdated commits on '{branch}'...")
         total = _commit_artwork(repo, grid, start_date, multiplier, log)
-        log(f"Created {total} backdated commits on branch {_branch_label(repo)}.")
+        log(f"Created {total} backdated commits on branch {branch}.")
     finally:
-        if art_branch:
+        if original_ref is not None:
             _restore(repo, original_ref, stashed, log)
+
+    if push:
+        push_branch(repo, branch, log)
+    else:
+        log(f"To publish the art, run: git -C {root} push -u origin {branch}")
     return total
 
 
@@ -120,13 +131,6 @@ def _resolve_start_date(
     if year is None:
         raise ValueError("Either year or start_date must be provided to apply_drawing")
     return get_first_sunday_of_year(year) + timedelta(weeks=offset_weeks)
-
-
-def _open_repo(path: str) -> git.Repo:
-    try:
-        return git.Repo(path)
-    except InvalidGitRepositoryError, NoSuchPathError:
-        raise RuntimeError(f"{path} is not a git repository") from None
 
 
 def _validate_branch_name(repo: git.Repo, name: str | None) -> None:
@@ -141,13 +145,57 @@ def _validate_branch_name(repo: git.Repo, name: str | None) -> None:
         raise ValueError(f"Invalid branch name: {name!r}") from None
 
 
+def _refuse_tool_checkout(root: Path) -> None:
+    if is_tool_checkout(root):
+        raise RuntimeError(
+            f"{root} is a github-pixel-artworks checkout. Art drawn here would not show on "
+            "your profile and would fill the tool's history with fake commits. Create an "
+            "empty repository on GitHub (for example <you>/pixel-art) and pass it as the target."
+        )
+
+
+def _require_default_branch(repo: git.Repo, root: Path) -> str:
+    """Return the current branch, which must be the default branch when that is known."""
+    if repo.head.is_detached:
+        raise RuntimeError(f"HEAD is detached in {root}. Check out its default branch first.")
+    current = repo.active_branch.name
+    default = default_branch(repo)
+    if default and current != default:
+        raise RuntimeError(
+            f"'{current}' is not the default branch ('{default}') of {root}, so GitHub "
+            f"would not count the commits. Check out '{default}', or use an art branch."
+        )
+    return current
+
+
+def _profile_warnings(repo: git.Repo, username: str | None) -> list[str]:
+    """Return why the commits might not show on the profile of ``username``."""
+    slug = github_slug(repo.remotes.origin.url) if "origin" in repo.remotes else None
+    login = username or (slug[0] if slug else None)
+    warnings = []
+    if email_warning := commit_email_warning(_commit_email(repo), login):
+        warnings.append(email_warning)
+    if slug and fetch_is_fork(*slug):
+        warnings.append(
+            f"{slug[0]}/{slug[1]} is a fork, and GitHub does not count commits made in "
+            "forks. Create a new repository for the art instead."
+        )
+    return warnings
+
+
+def _commit_email(repo: git.Repo) -> str | None:
+    """Return the email git will put on the commits, if it is configured."""
+    if email := os.environ.get("GIT_AUTHOR_EMAIL"):
+        return email
+    try:
+        return repo.git.config("--get", "user.email") or None
+    except GitCommandError:
+        return None
+
+
 def _current_ref(repo: git.Repo) -> str:
     """Return the current branch name, or the commit SHA when HEAD is detached."""
     return repo.head.commit.hexsha if repo.head.is_detached else repo.active_branch.name
-
-
-def _branch_label(repo: git.Repo) -> str:
-    return "detached HEAD" if repo.head.is_detached else repo.active_branch.name
 
 
 def _stash_changes(repo: git.Repo, art_branch: str, log: Log) -> bool:
@@ -190,36 +238,6 @@ def _restore(repo: git.Repo, original_ref: str, stashed: bool, log: Log) -> None
             log("Restored stashed changes.")
         except GitCommandError as error:
             log(f"Warning: could not pop the stash (run `git stash pop` manually): {error}")
-
-
-def _start_orphan_branch(repo: git.Repo, name: str, username: str | None, log: Log) -> None:
-    """Switch to a new orphan branch whose only tracked file is a short README."""
-    if name in repo.heads:
-        raise RuntimeError(
-            f"Branch '{name}' already exists. Pick another branch name "
-            "or use art_branch to add commits to an existing art branch."
-        )
-    log(f"Creating orphan branch '{name}'...")
-    repo.git.checkout("--orphan", name)
-    if repo.git.ls_files():
-        repo.git.rm("-r", "-f", "--quiet", ".")
-
-    readme = Path(str(repo.working_tree_dir)) / "README.md"
-    readme.write_text(_orphan_readme(repo, name, username), encoding="utf-8")
-    repo.index.add(["README.md"])
-    repo.index.commit("chore: initialize pixel-art branch")
-
-
-def _orphan_readme(repo: git.Repo, branch: str, username: str | None) -> str:
-    repo_url = resolve_github_repo_url(repo, username=username)
-    lines = [
-        "# GitHub Pixel Art",
-        "",
-        f"Generated on {datetime.now().isoformat()} using github-pixel-artworks",
-        *([f"Repo: {repo_url}"] if repo_url else []),
-        f"Branch: {branch}",
-    ]
-    return "\n".join(lines) + "\n"
 
 
 def _commit_artwork(

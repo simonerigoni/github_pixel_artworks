@@ -1,7 +1,7 @@
 """Tkinter editor: ``github-pixel-artworks-gui``.
 
 Draw an artwork with GitHub's four shades, save it to ``data/``, then create the
-backdated commits for a year and push them. Git work runs on a worker thread;
+backdated commits for a year in your art repository and push them. Git work runs on a worker thread;
 worker threads talk to Tk only through queues drained on the main thread.
 """
 
@@ -16,6 +16,7 @@ from tkinter.scrolledtext import ScrolledText
 
 import git
 
+from .art_repo import local_checkout_path, push_branch
 from .artwork import (
     DAYS_PER_WEEK,
     LEVEL_COLORS,
@@ -48,9 +49,12 @@ DRAWINGS_PANE_WIDTH = 210
 DRAWING_BUTTON_WIDTH = 7
 """Characters; keeps Load, Delete and Refresh on one row of the drawings pane."""
 EDITOR_PANE_PADDING = 24
+ART_BRANCH_HINT_WIDTH = 300
+"""Pixels; wrap width of the art branch hint."""
+HINT_COLOR = "#555"
 QUEUE_POLL_MS = 80
 STATUS_READY = "Ready"
-STATUS_HINT = "Ready - draw on the grid, pick a year, then Generate and Push."
+STATUS_HINT = "Ready - draw on the grid, pick a year and your art repository, then Generate."
 
 
 class PixelArtGUI:
@@ -65,7 +69,7 @@ class PixelArtGUI:
         self.grid: Grid = _empty_grid(DEFAULT_COLUMNS)
         self.level_var = tk.IntVar(value=1)
         self._stroke_value = 1
-        self._push_branch: str | None = None
+        self._push_target: tuple[Path, str] | None = None
         self._log_queue: queue.Queue[str] = queue.Queue()
         self._ui_queue: queue.Queue[Callable[[], object]] = queue.Queue()
 
@@ -177,7 +181,7 @@ class PixelArtGUI:
 
     def _build_actions_pane(self, parent: ttk.PanedWindow) -> ttk.Frame:
         pane = ttk.Frame(parent)
-        actions = ttk.LabelFrame(pane, text="Actions (this repo)", padding=6)
+        actions = ttk.LabelFrame(pane, text="Actions", padding=6)
         actions.pack(fill=tk.X, pady=(0, 6))
 
         self.filename_var = tk.StringVar(value="my_art")
@@ -188,18 +192,28 @@ class PixelArtGUI:
         )
         ttk.Separator(actions, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
 
-        self.use_art_branch_var = tk.BooleanVar(value=True)
+        self.target_repo_var = tk.StringVar()
+        ttk.Label(actions, text="Art repository (GitHub URL or folder):").pack(anchor=tk.W)
+        ttk.Entry(actions, textvariable=self.target_repo_var).pack(fill=tk.X, pady=2)
+
+        self.use_art_branch_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            actions, text="Use dedicated art branch", variable=self.use_art_branch_var
-        ).pack(anchor=tk.W)
+            actions, text="Advanced: use an art branch", variable=self.use_art_branch_var
+        ).pack(anchor=tk.W, pady=(4, 0))
         branch_row = ttk.Frame(actions)
         branch_row.pack(fill=tk.X, pady=2)
         self.art_branch_var = tk.StringVar()
-        ttk.Label(branch_row, text="Art branch name:").pack(side=tk.LEFT)
+        ttk.Label(branch_row, text="Branch:").pack(side=tk.LEFT)
         ttk.Entry(branch_row, textvariable=self.art_branch_var, width=18).pack(side=tk.LEFT, padx=4)
+        ttk.Label(
+            actions,
+            text="Shows on your profile only once it is the default branch.",
+            wraplength=ART_BRANCH_HINT_WIDTH,
+            foreground=HINT_COLOR,
+        ).pack(anchor=tk.W, pady=(0, 4))
 
         self.generate_button = ttk.Button(
-            actions, text="Generate Art for Selected Year", command=self._on_generate_clicked
+            actions, text="Generate Art", command=self._on_generate_clicked
         )
         self.generate_button.pack(fill=tk.X, pady=2)
         self.push_button = ttk.Button(
@@ -374,10 +388,13 @@ class PixelArtGUI:
     # Generate and push -----------------------------------------------------
 
     def _on_generate_clicked(self) -> None:
-        if not messagebox.askyesno(
-            "Generate Art",
-            "This creates backdated commits in the current repository.\n\nContinue?",
-        ):
+        target = self.target_repo_var.get().strip()
+        if not target:
+            messagebox.showerror(
+                "Generate Art",
+                "Enter your art repository first: the URL or folder of an empty repository "
+                "you created for the art, e.g. https://github.com/<you>/pixel-art.",
+            )
             return
         try:
             year, offset = self.year_var.get(), self.offset_var.get()
@@ -385,6 +402,11 @@ class PixelArtGUI:
             messagebox.showerror("Generate Art", "Year and offset must be whole numbers.")
             return
         art_branch = self.art_branch_var.get().strip() if self.use_art_branch_var.get() else None
+        where = f"branch '{art_branch}'" if art_branch else "the default branch"
+        if not messagebox.askyesno(
+            "Generate Art", f"This creates backdated commits on {where} of:\n{target}\n\nContinue?"
+        ):
+            return
         force = self.force_var.get()
         grid = [row[:] for row in self.grid]
 
@@ -396,18 +418,17 @@ class PixelArtGUI:
             try:
                 count = apply_drawing(
                     grid=grid,
+                    target_repo=target,
                     year=year,
                     offset_weeks=offset,
-                    in_place=True,
-                    force=force,
                     art_branch=art_branch,
+                    force=force,
                     log=self._queue_log,
                 )
-                branch = art_branch or _active_branch(git.Repo("."))
-                self._queue_log(
-                    f"Created {count} commits for {year} on {branch or 'detached HEAD'}."
-                )
-                self._call_in_ui(lambda: self._set_push_branch(branch))
+                if count:
+                    checkout = local_checkout_path(target)
+                    branch = art_branch or _active_branch(git.Repo(checkout))
+                    self._call_in_ui(lambda: self._set_push_target(checkout, branch))
             except Exception as error:  # report any failure in the log
                 self._queue_log(f"Error: {error}")
             finally:
@@ -416,22 +437,20 @@ class PixelArtGUI:
 
         threading.Thread(target=generate, daemon=True).start()
 
-    def _set_push_branch(self, branch: str | None) -> None:
-        self._push_branch = branch
+    def _set_push_target(self, checkout: Path, branch: str | None) -> None:
+        self._push_target = (checkout, branch) if branch else None
         self.push_button.config(state=tk.NORMAL if branch else tk.DISABLED)
 
     def _on_push_clicked(self) -> None:
-        branch = self._push_branch
-        if not branch:
+        if self._push_target is None:
             return
+        checkout, branch = self._push_target
         self.push_button.config(state=tk.DISABLED)
         self.status_var.set("Pushing...")
 
         def push() -> None:
             try:
-                self._queue_log(f"Pushing {branch}...")
-                git.Repo(".").git.push("origin", branch)
-                self._queue_log("Push completed.")
+                push_branch(git.Repo(checkout), branch, self._queue_log)
             except Exception as error:  # report any failure in the log
                 self._queue_log(f"Error: push failed: {error}")
             finally:

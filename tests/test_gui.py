@@ -7,11 +7,12 @@ silently stop running there.
 
 import os
 import tkinter as tk
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
+import git
 import pytest
 
 from github_pixel_artworks import gui
@@ -45,6 +46,16 @@ def paint(app: gui.PixelArtGUI, level: int, row: int, column: int) -> None:
 
 def cell_fill(app: gui.PixelArtGUI, row: int, column: int) -> str:
     return app.canvas.itemcget(f"cell_{row}_{column}", "fill")
+
+
+class ImmediateThread:
+    """Stands in for threading.Thread and runs the target at once, on this thread."""
+
+    def __init__(self, target: Callable[[], None], daemon: bool) -> None:
+        self._target = target
+
+    def start(self) -> None:
+        self._target()
 
 
 def load(app: gui.PixelArtGUI, name: str) -> None:
@@ -147,3 +158,44 @@ def test_art_branch_follows_the_year_until_renamed(app: gui.PixelArtGUI) -> None
     app.art_branch_var.set("my-branch")
     app._on_schedule_changed()
     assert app.art_branch_var.get() == "my-branch"
+
+
+class TestGenerateAndPush:
+    @pytest.fixture
+    def answers(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Say yes to every question and record the error dialogs shown."""
+        errors: list[str] = []
+        monkeypatch.setattr(gui.messagebox, "askyesno", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(gui.messagebox, "showerror", lambda _title, text: errors.append(text))
+        monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+        return errors
+
+    def test_the_art_branch_is_off_by_default(self, app: gui.PixelArtGUI) -> None:
+        assert app.use_art_branch_var.get() is False
+
+    def test_generate_asks_for_the_art_repository_first(
+        self, app: gui.PixelArtGUI, answers: list[str]
+    ) -> None:
+        app.target_repo_var.set("  ")
+
+        app._on_generate_clicked()
+
+        assert answers and "art repository" in answers[0]
+
+    def test_generate_draws_on_the_default_branch_and_push_publishes_it(
+        self, app: gui.PixelArtGUI, answers: list[str], git_repo: git.Repo, tmp_path: Path
+    ) -> None:
+        remote = git.Repo.init(tmp_path / "origin.git", bare=True, initial_branch="main")
+        git_repo.remotes.origin.set_url(str(tmp_path / "origin.git"))
+        app.target_repo_var.set(str(git_repo.working_tree_dir))
+        app.year_var.set(2026)
+        paint(app, 2, 0, 0)
+
+        app._on_generate_clicked()
+        app._drain_queues()
+        app._on_push_clicked()
+        app._drain_queues()
+
+        assert answers == []
+        assert len(list(git_repo.iter_commits("main"))) == 1 + 2
+        assert remote.heads.main.commit == git_repo.heads.main.commit

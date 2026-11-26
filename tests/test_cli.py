@@ -17,6 +17,7 @@ from github_pixel_artworks.cli import (
 
 SIMPLE = str(Path(__file__).resolve().parents[1] / "data" / "simple.txt")
 TWO_PIXELS = [[1, 0], [0, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
+ART_REPO = "https://github.com/you/pixel-art"
 
 
 @pytest.fixture
@@ -98,24 +99,36 @@ class TestArguments:
         assert exit_code_of(run_cli, "-i", SIMPLE) == 2  # argparse usage error
 
     def test_year_starts_on_its_first_sunday_plus_offset(self, run_cli) -> None:
-        received = run_cli("-i", SIMPLE, "--year", "2026", "--offset-weeks", "2", "-y")
+        received = run_cli(
+            "-i", SIMPLE, "--year", "2026", "--offset-weeks", "2", "-t", ART_REPO, "-y"
+        )
 
         assert received["start_date"] == datetime(2026, 1, 18)
 
-    def test_orphan_branch_name_is_passed_through(self, run_cli) -> None:
-        received = run_cli("-i", SIMPLE, "--year", "2026", "--branch", "my-art", "-y")
+    def test_the_art_repository_and_push_are_passed_through(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "-t", ART_REPO, "--push", "-y")
 
-        assert received["branch"] == "my-art"
-        assert received["in_place"] is False
+        assert received["target_repo"] == ART_REPO
+        assert received["push"] is True
+        assert received["art_branch"] is None
 
-    @pytest.mark.parametrize("alias", ["current", "HEAD", "in-place"])
-    def test_branch_aliases_mean_in_place(self, run_cli, alias: str) -> None:
-        received = run_cli("-i", SIMPLE, "--year", "2026", "--branch", alias, "-y")
+    def test_the_art_repository_is_required(
+        self, run_cli, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert exit_code_of(run_cli, "-i", SIMPLE, "--year", "2026", "-y") == EXIT_BAD_ARGUMENT
+        assert "--target-repo" in capsys.readouterr().err
 
-        assert received["in_place"] is True
+    def test_dry_run_needs_no_art_repository(
+        self, run_cli, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        run_cli("-i", SIMPLE, "--year", "2026", "--dry-run")
+
+        assert "Dry run complete" in capsys.readouterr().out
 
     def test_bare_artworks_branch_gets_the_year(self, run_cli) -> None:
-        received = run_cli("-i", SIMPLE, "--year", "2026", "--art-branch", "artworks", "-y")
+        received = run_cli(
+            "-i", SIMPLE, "--year", "2026", "--art-branch", "artworks", "-t", ".", "-y"
+        )
 
         assert received["art_branch"] == "artworks-2026"
 
@@ -129,7 +142,7 @@ class TestArguments:
         ],
     )
     def test_invalid_values_exit_with_bad_argument(self, run_cli, argv: tuple[str, ...]) -> None:
-        assert exit_code_of(run_cli, "-i", SIMPLE, *argv, "-y") == EXIT_BAD_ARGUMENT
+        assert exit_code_of(run_cli, "-i", SIMPLE, *argv, "-t", ART_REPO, "-y") == EXIT_BAD_ARGUMENT
 
     def test_unreadable_artwork_exits_with_bad_artwork(self, run_cli, tmp_path: Path) -> None:
         missing = str(tmp_path / "missing.txt")
@@ -137,7 +150,7 @@ class TestArguments:
         assert exit_code_of(run_cli, "-i", missing, "--year", "2026") == EXIT_BAD_ARTWORK
 
     def test_non_sunday_start_warns(self, run_cli, capsys: pytest.CaptureFixture[str]) -> None:
-        run_cli("-i", SIMPLE, "--start-date", "2026-01-05", "-y")
+        run_cli("-i", SIMPLE, "--start-date", "2026-01-05", "-t", ART_REPO, "-y")
 
         assert "Warning: 2026-01-05 is not a Sunday" in capsys.readouterr().err
 
@@ -152,7 +165,6 @@ def test_cli_draws_into_a_real_repo(git_repo: git.Repo, monkeypatch: pytest.Monk
             SIMPLE,
             "--year",
             "2026",
-            "--in-place",
             "-y",
             "--target-repo",
             root,

@@ -41,7 +41,7 @@ def test_preview_shows_span_multiplier_and_commit_count() -> None:
     assert "Total commits that will be created: 6" in text
 
 
-class TestInPlace:
+class TestDefaultBranch:
     def test_commits_each_pixel_on_its_utc_day(self, git_repo: git.Repo) -> None:
         count = draw(git_repo, start_date=datetime(2026, 1, 4))
 
@@ -63,6 +63,88 @@ class TestInPlace:
     def test_empty_grid_does_nothing(self, git_repo: git.Repo) -> None:
         assert draw(git_repo, grid=[[]] * 7) == 0
         assert art_commits(git_repo, "main") == []
+
+    def test_refuses_a_branch_that_is_not_the_default(
+        self, tmp_path: Path, filled_remote: str
+    ) -> None:
+        clone = git.Repo.clone_from(filled_remote, tmp_path / "clone")
+        clone.git.checkout("-b", "feature")
+
+        with pytest.raises(RuntimeError, match="not the default branch"):
+            draw(clone)
+
+        assert art_commits(clone, "feature") == []
+
+    def test_refuses_the_tool_checkout(self, git_repo: git.Repo) -> None:
+        package = root_of(git_repo) / "src" / "github_pixel_artworks"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        git_repo.index.add(["src/github_pixel_artworks/__init__.py"])
+        git_repo.index.commit("the tool itself")
+
+        with pytest.raises(RuntimeError, match="github-pixel-artworks checkout"):
+            draw(git_repo)
+
+        assert art_commits(git_repo, "main") == []
+
+
+class TestNewArtRepository:
+    def test_clones_an_empty_repository_draws_and_pushes(
+        self,
+        tmp_path: Path,
+        empty_remote: str,
+        git_identity: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        count = apply_drawing(
+            ONE_PIXEL_LEVEL_TWO, year=2026, target_repo=empty_remote, push=True, log=ignore
+        )
+
+        remote = git.Repo(empty_remote.removeprefix("file://"))
+        assert count == 2
+        assert len(art_commits(remote, "main")) == 2
+        assert (tmp_path / "pixel-art" / ".git").is_dir()
+
+    def test_without_push_tells_how_to_push(
+        self, tmp_path: Path, empty_remote: str, git_identity: None
+    ) -> None:
+        lines: list[str] = []
+        clone = tmp_path / "pixel-art"
+        git.Repo.clone_from(empty_remote, clone)
+
+        apply_drawing(ONE_PIXEL_LEVEL_TWO, year=2026, target_repo=str(clone), log=lines.append)
+
+        assert f"git -C {clone} push -u origin main" in "\n".join(lines)
+
+
+class TestProfileWarnings:
+    def test_warns_about_a_noreply_email_of_another_account(self, git_repo: git.Repo) -> None:
+        with git_repo.config_writer() as cw:
+            cw.set_value("user", "email", "123+other@users.noreply.github.com")
+        lines: list[str] = []
+
+        draw(git_repo, log=lines.append)
+
+        assert any(line.startswith("Warning:") and "'other'" in line for line in lines)
+
+    def test_warns_when_the_repository_is_a_fork(
+        self, git_repo: git.Repo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("github_pixel_artworks.painter.fetch_is_fork", lambda _o, _n: True)
+        lines: list[str] = []
+
+        draw(git_repo, log=lines.append)
+
+        assert any(line.startswith("Warning:") and "fork" in line for line in lines)
+
+    def test_a_matching_setup_has_no_warnings(self, git_repo: git.Repo) -> None:
+        lines: list[str] = []
+
+        draw(git_repo, log=lines.append)
+
+        assert not any(line.startswith("Warning:") for line in lines)
 
 
 class TestValidation:
@@ -119,6 +201,13 @@ class TestArtBranch:
         assert (root / "notes.txt").read_text(encoding="utf-8") == "untracked notes\n"
         assert git_repo.git.stash("list") == ""
 
+    def test_warns_that_the_branch_must_become_the_default(self, git_repo: git.Repo) -> None:
+        lines: list[str] = []
+
+        draw(git_repo, art_branch="artworks-2026", log=lines.append)
+
+        assert any("default branch" in line for line in lines if line.startswith("Warning:"))
+
     def test_rerun_adds_to_the_existing_branch(self, git_repo: git.Repo) -> None:
         draw(git_repo, art_branch="artworks-2026")
 
@@ -142,27 +231,3 @@ class TestArtBranch:
 
         assert git_repo.active_branch.name == "main"
         assert (root / "source.py").read_text(encoding="utf-8") == "print('wip')\n"
-
-
-class TestOrphanBranch:
-    def test_keeps_ignored_files_and_tracks_only_a_readme(self, git_repo: git.Repo) -> None:
-        root = root_of(git_repo)
-        (root / ".env").write_text("SECRET=1\n", encoding="utf-8")  # ignored, so "clean"
-
-        count = draw(git_repo, in_place=False, branch="my-art")
-
-        assert count == 2
-        assert git_repo.active_branch.name == "my-art"
-        assert (root / ".env").read_text(encoding="utf-8") == "SECRET=1\n"
-        assert git_repo.git.ls_files().splitlines() == ["README.md"]
-        readme = (root / "README.md").read_text(encoding="utf-8")
-        assert "Repo: https://github.com/someone/canvas" in readme
-        assert "source.py" in git_repo.git.ls_tree("--name-only", "main").splitlines()
-
-    def test_refuses_an_existing_branch(self, git_repo: git.Repo) -> None:
-        git_repo.create_head("pixel-art")
-
-        with pytest.raises(RuntimeError, match="already exists"):
-            draw(git_repo, in_place=False)
-
-        assert git_repo.active_branch.name == "main"

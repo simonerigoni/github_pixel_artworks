@@ -1,16 +1,16 @@
-"""GitHub username checks, contribution scraping and remote URLs."""
+"""GitHub username checks, contribution scraping, remote URLs and repository checks."""
 
-import urllib.error
 from pathlib import Path
 
-import git
 import pytest
 
 from github_pixel_artworks.github import (
     calculate_multiplier,
+    commit_email_warning,
+    fetch_is_fork,
     fetch_max_daily_commits,
+    github_slug,
     normalize_github_https_url,
-    resolve_github_repo_url,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -82,15 +82,11 @@ class TestFetchMaxDailyCommits:
         assert requested == []
         assert messages[0].startswith("Warning:")
 
-    def test_returns_none_and_warns_when_offline(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        def offline(*_args: object, **_kwargs: object) -> None:
-            raise urllib.error.URLError("offline")
-
-        monkeypatch.setattr("urllib.request.urlopen", offline)
+    def test_returns_none_and_warns_when_offline(self) -> None:
         messages: list[str] = []
 
         assert fetch_max_daily_commits("someone", log=messages.append) is None
-        assert "offline" in messages[0]
+        assert "network disabled" in messages[0]
 
 
 @pytest.mark.parametrize(
@@ -117,17 +113,59 @@ def test_normalize_github_https_url(remote: str, expected: str | None) -> None:
     assert normalize_github_https_url(remote) == expected
 
 
-def test_resolve_github_repo_url_prefers_origin(git_repo: git.Repo) -> None:
-    git_repo.create_remote("backup", "git@github.com:someone/backup.git")
+@pytest.mark.parametrize(
+    ("remote", "expected"),
+    [
+        ("git@github.com:owner/repo.git", ("owner", "repo")),
+        ("https://github.com/owner/repo", ("owner", "repo")),
+        ("https://github.com/owner", None),
+        ("https://gitlab.com/owner/repo.git", None),
+    ],
+)
+def test_github_slug(remote: str, expected: tuple[str, str] | None) -> None:
+    assert github_slug(remote) == expected
 
-    assert resolve_github_repo_url(git_repo) == "https://github.com/someone/canvas"
 
+class TestCommitEmailWarning:
+    def test_warns_when_the_email_is_unset(self) -> None:
+        warning = commit_email_warning(None, "you")
 
-def test_resolve_github_repo_url_falls_back_to_username(tmp_path: Path) -> None:
-    repo = git.Repo.init(tmp_path / "no-remote")
+        assert warning is not None
+        assert "user.email is not set" in warning
 
-    assert resolve_github_repo_url(repo) is None
-    assert (
-        resolve_github_repo_url(repo, username="someone")
-        == "https://github.com/someone/github_pixel_artworks"
+    @pytest.mark.parametrize(
+        "email", ["123+other@users.noreply.github.com", "other@users.noreply.github.com"]
     )
+    def test_warns_when_the_noreply_address_belongs_to_another_login(self, email: str) -> None:
+        warning = commit_email_warning(email, "you")
+
+        assert warning is not None
+        assert "'other'" in warning
+
+    @pytest.mark.parametrize(
+        ("email", "login"),
+        [
+            ("123+You@users.noreply.github.com", "you"),
+            ("you@example.com", "you"),
+            ("123+other@users.noreply.github.com", None),
+        ],
+    )
+    def test_accepts_a_matching_or_unverifiable_email(self, email: str, login: str | None) -> None:
+        assert commit_email_warning(email, login) is None
+
+
+class TestFetchIsFork:
+    @pytest.mark.parametrize(("body", "expected"), [('{"fork": true}', True), ("{}", False)])
+    def test_reads_the_fork_flag_of_the_public_api(self, serve, body: str, expected: bool) -> None:
+        requested = serve(body)
+
+        assert fetch_is_fork("you", "pixel-art") is expected
+        assert requested == ["https://api.github.com/repos/you/pixel-art"]
+
+    def test_is_unknown_when_offline(self) -> None:
+        assert fetch_is_fork("you", "pixel-art") is None
+
+    def test_is_unknown_for_a_reply_that_is_not_json(self, serve) -> None:
+        serve("<html>rate limited</html>")
+
+        assert fetch_is_fork("you", "pixel-art") is None
