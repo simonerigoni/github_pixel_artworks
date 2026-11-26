@@ -7,17 +7,21 @@ from pathlib import Path
 from typing import NoReturn
 
 from . import __version__
-from .artwork import MAX_WEEKS, Grid, load_grid
-from .dates import MAX_YEAR, MIN_YEAR, SUNDAY, get_auto_start_date, get_first_sunday_of_year
+from .artwork import Grid, load_grid
+from .config import (
+    ART_BRANCH_PREFIX,
+    EXIT_BAD_ARGUMENT,
+    EXIT_BAD_ARTWORK,
+    EXIT_DRAWING_FAILED,
+    MAX_WEEKS,
+    MAX_YEAR,
+    MIN_YEAR,
+    SUNDAY,
+    YEAR_BRANCH_PLACEHOLDERS,
+)
+from .dates import get_auto_start_date, get_first_sunday_of_year
 from .github import calculate_multiplier, fetch_max_daily_commits
 from .painter import apply_drawing, preview
-
-EXIT_DRAWING_FAILED = 2
-EXIT_BAD_ARTWORK = 4
-EXIT_BAD_ARGUMENT = 5
-
-YEAR_BRANCH_PLACEHOLDERS = ("artworks", "art", "dedicated-art")
-"""``--art-branch`` values expanded to ``artworks-<year>`` when ``--year`` is given."""
 
 
 def perform_pixel_art(
@@ -203,7 +207,7 @@ def _resolve_art_branch(args: argparse.Namespace) -> str | None:
     art_branch = args.art_branch
     if art_branch and args.year is not None:
         if art_branch.strip().lower() in YEAR_BRANCH_PLACEHOLDERS:
-            art_branch = f"artworks-{args.year}"
+            art_branch = f"{ART_BRANCH_PREFIX}-{args.year}"
             print(f"Using art branch '{art_branch}' (from --year {args.year}).")
     return art_branch
 

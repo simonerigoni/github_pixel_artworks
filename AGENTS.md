@@ -10,6 +10,7 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
 
 - `src/github_pixel_artworks/` (src layout; never add modules at the root)
   - `__init__.py`: version and the public API (`__all__`)
+  - `config.py`: every named constant (levels, palette, year range, GitHub URLs and regexes, commit marker, exit codes, GUI and diagram layout), grouped by topic
   - `artwork.py`: the 7-row file format, intensity levels, colours, drawing paths
   - `dates.py`: Sunday alignment, the auto-align window, pixel timestamps
   - `art_repo.py`: opening or cloning the target repository, its default branch, pushing
@@ -30,7 +31,7 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
 ## Conventions
 
 - Type hints and docstrings on public functions; private helpers get a docstring when the why is not obvious.
-- Named constants instead of magic numbers; modern syntax (`X | None`, `type` aliases).
+- Named constants instead of magic numbers, defined in `config.py` (never module-level constants elsewhere); modern syntax (`X | None`, `type` aliases).
 - User-facing messages: `Error: ...` / `Warning: ...` on stderr in the CLI; the core reports progress through its `log` callback and raises `ValueError` (bad input) or `RuntimeError` (repository state).
 - Tests: descriptive names, arrange/act/assert, git behaviour against the `git_repo` fixture, never against this repository, and never the network.
 

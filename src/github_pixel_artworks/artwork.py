@@ -2,27 +2,21 @@
 
 from pathlib import Path
 
+from .config import (
+    DAYS_PER_WEEK,
+    DIGITS,
+    EMPTY_CHARS,
+    EMPTY_COLOR,
+    LEVEL_COLORS,
+    LEVEL_FOUR_CHARS,
+    LEVEL_ONE_CHARS,
+    MAX_FILE_LEVEL,
+    MAX_WEEKS,
+    TOP_LEVEL,
+)
+
 type Grid = list[list[int]]
 """Seven rows (Sunday first) of intensity levels, one column per week. 0 means empty."""
-
-DAYS_PER_WEEK = 7
-MAX_WEEKS = 52
-"""Widest artwork: one year of the contribution graph."""
-
-TOP_LEVEL = 4
-"""Darkest of GitHub's four contribution shades; the GUI paints levels 1 to TOP_LEVEL."""
-
-MAX_FILE_LEVEL = 9
-"""Highest level a single character can encode (the digit 9)."""
-
-EMPTY_COLOR = "#ebedf0"
-LEVEL_COLORS = {1: "#9be9a8", 2: "#40c463", 3: "#30a14e", TOP_LEVEL: "#216e39"}
-"""GitHub's contribution greens. Levels above TOP_LEVEL use the darkest one."""
-
-_EMPTY_CHARS = frozenset(" .xX0")
-_LEVEL_ONE_CHARS = frozenset("*1")
-_LEVEL_FOUR_CHARS = frozenset("#hH")
-_DIGITS = "0123456789"
 
 
 def load_grid(path: Path | str) -> Grid:
@@ -69,13 +63,13 @@ def load_grid(path: Path | str) -> Grid:
 
 def char_to_level(char: str) -> int:
     """Return the intensity level encoded by one artwork character."""
-    if char in _EMPTY_CHARS:
+    if char in EMPTY_CHARS:
         return 0
-    if char in _LEVEL_ONE_CHARS:
+    if char in LEVEL_ONE_CHARS:
         return 1
-    if char in _LEVEL_FOUR_CHARS:
+    if char in LEVEL_FOUR_CHARS:
         return TOP_LEVEL
-    if char in _DIGITS:
+    if char in DIGITS:
         return int(char)
     return 0
 

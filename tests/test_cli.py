@@ -7,13 +7,8 @@ import git
 import pytest
 
 from github_pixel_artworks.artwork import count_commits, load_grid
-from github_pixel_artworks.cli import (
-    EXIT_BAD_ARGUMENT,
-    EXIT_BAD_ARTWORK,
-    EXIT_DRAWING_FAILED,
-    cli,
-    perform_pixel_art,
-)
+from github_pixel_artworks.cli import cli, perform_pixel_art
+from github_pixel_artworks.config import EXIT_BAD_ARGUMENT, EXIT_BAD_ARTWORK, EXIT_DRAWING_FAILED
 
 SIMPLE = str(Path(__file__).resolve().parents[1] / "data" / "simple.txt")
 TWO_PIXELS = [[1, 0], [0, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]

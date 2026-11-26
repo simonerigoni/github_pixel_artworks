@@ -10,25 +10,25 @@ import git
 from git.exc import GitCommandError
 
 from .art_repo import Log, default_branch, is_tool_checkout, open_art_repo, push_branch
-from .artwork import DAYS_PER_WEEK, MAX_WEEKS, Grid, count_commits, validate_grid
+from .artwork import Grid, count_commits, validate_grid
+from .config import (
+    ART_MESSAGE_PREFIX,
+    DAYS_PER_WEEK,
+    EMPTY_PIXEL,
+    FILLED_PIXEL,
+    MAX_WEEKS,
+    PROGRESS_EVERY,
+    REF_UPDATE_MESSAGE,
+)
 from .dates import get_first_sunday_of_year, pixel_timestamp
 from .github import commit_email_warning, fetch_is_fork, github_slug
-
-PROGRESS_EVERY = 10
-"""Log a progress line every this many commits."""
-
-ART_MESSAGE_PREFIX = "pixel art "
-"""Start of every art commit message, which is also how earlier art is recognised."""
-
-_FILLED_PIXEL = "#"
-_EMPTY_PIXEL = "."
 
 
 def preview(grid: Grid, start_date: datetime, multiplier: int) -> str:
     """Return a text preview of ``grid`` with its date span and commit count."""
     width = len(grid[0])
     end_date = start_date + timedelta(weeks=width - 1, days=DAYS_PER_WEEK - 1)
-    rows = ["".join(_FILLED_PIXEL if level else _EMPTY_PIXEL for level in row) for row in grid]
+    rows = ["".join(FILLED_PIXEL if level else EMPTY_PIXEL for level in row) for row in grid]
     return "\n".join(
         [
             *rows,
@@ -330,7 +330,7 @@ def _commit_artwork(repo: git.Repo, branch: str, plan: _Plan, log: Log) -> int:
             if total % PROGRESS_EVERY == 0:
                 log(f"  ... {total} commits so far")
     if total and tip:
-        repo.git.update_ref("-m", "github-pixel-artworks", f"refs/heads/{branch}", tip)
+        repo.git.update_ref("-m", REF_UPDATE_MESSAGE, f"refs/heads/{branch}", tip)
     return total
 
 
