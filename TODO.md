@@ -21,3 +21,4 @@ Overview of the status of the tasks of this project.
 - [x] Add CI
 - [x] Add tests
 - [x] Switch license to GPL-3.0
+- [x] Draw into a repository you own (the profile README repo) with empty, idempotent commits and email and fork checks

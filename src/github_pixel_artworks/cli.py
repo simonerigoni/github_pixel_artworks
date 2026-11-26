@@ -10,38 +10,34 @@ from . import __version__
 from .artwork import MAX_WEEKS, Grid, load_grid
 from .dates import MAX_YEAR, MIN_YEAR, SUNDAY, get_auto_start_date, get_first_sunday_of_year
 from .github import calculate_multiplier, fetch_max_daily_commits
-from .painter import DEFAULT_ORPHAN_BRANCH, apply_drawing, preview
+from .painter import apply_drawing, preview
 
 EXIT_DRAWING_FAILED = 2
 EXIT_BAD_ARTWORK = 4
 EXIT_BAD_ARGUMENT = 5
-
-IN_PLACE_BRANCH_ALIASES = ("", "current", "HEAD", "in-place")
-"""``--branch`` values that mean the same as ``--in-place``."""
 
 YEAR_BRANCH_PLACEHOLDERS = ("artworks", "art", "dedicated-art")
 """``--art-branch`` values expanded to ``artworks-<year>`` when ``--year`` is given."""
 
 
 def perform_pixel_art(
-    target_repo: str,
+    target_repo: str | None,
     grid: Grid,
     start_date: datetime,
     multiplier: int = 1,
-    branch: str = DEFAULT_ORPHAN_BRANCH,
     dry_run: bool = False,
     yes: bool = False,
     force: bool = False,
-    in_place: bool = False,
     art_branch: str | None = None,
     username: str | None = None,
+    push: bool = False,
 ) -> None:
     """Preview the artwork, ask for confirmation unless ``yes``, then draw it.
 
-    ``branch`` is the orphan branch name, ignored with ``in_place`` or
-    ``art_branch``. ``username`` is only used for the orphan branch README link
-    when the repo has no GitHub remote. Exits with ``EXIT_DRAWING_FAILED`` if
-    drawing fails.
+    ``target_repo`` is the art repository (a path or URL). A dry run without one
+    only prints the preview; with one it also checks the repository and reports
+    how many commits are new. Exits with ``EXIT_BAD_ARGUMENT`` when it is missing and with
+    ``EXIT_DRAWING_FAILED`` if drawing fails.
     """
     if not grid or not grid[0]:
         print("Nothing to do (empty grid).")
@@ -50,45 +46,46 @@ def perform_pixel_art(
     print("=== GitHub Pixel Art Preview ===")
     print(preview(grid, start_date, multiplier))
     print()
-    if dry_run:
+    if dry_run and not target_repo:
         print("Dry run complete. No commits were made.")
         return
+    if not target_repo:
+        _fail(
+            "--target-repo is required: the URL or path of a repository you own, e.g. your "
+            "profile README repository https://github.com/<username>/<username>",
+            EXIT_BAD_ARGUMENT,
+        )
 
-    in_place = in_place or branch in IN_PLACE_BRANCH_ALIASES
-    print(_mode_description(in_place, art_branch, branch))
-    if not yes and not _confirm():
-        print("Aborted by user.")
-        return
+    if not dry_run:
+        print(_mode_description(target_repo, art_branch))
+        if not yes and not _confirm():
+            print("Aborted by user.")
+            return
 
     try:
         apply_drawing(
             grid=grid,
-            start_date=start_date,
             target_repo=target_repo,
+            start_date=start_date,
             multiplier=multiplier,
-            in_place=in_place,
-            force=force,
             art_branch=art_branch,
             username=username,
-            branch=branch,
+            push=push,
+            force=force,
+            dry_run=dry_run,
             log=print,
         )
     except Exception as error:  # report any failure as a CLI error
         _fail(str(error), EXIT_DRAWING_FAILED)
 
 
-def _mode_description(in_place: bool, art_branch: str | None, branch: str) -> str:
+def _mode_description(target_repo: str, art_branch: str | None) -> str:
     if art_branch:
         return (
-            f"Art commits will be added to branch '{art_branch}'. "
+            f"Art commits will be added to branch '{art_branch}' of '{target_repo}'. "
             "Your current branch and uncommitted changes are restored afterwards."
         )
-    if in_place:
-        return "Art commits will be added to the current branch."
-    return (
-        f"Warning: this creates backdated commits on a new orphan branch '{branch}'. "
-        "Use it only in a repository dedicated to pixel art."
-    )
+    return f"Art commits will be added to the default branch of '{target_repo}'."
 
 
 def _confirm() -> bool:
@@ -114,7 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="github-pixel-artworks",
         description="Draw pixel art on your GitHub contribution graph with backdated commits.",
-        epilog="Tip: keep each year's art on its own branch with --art-branch artworks-YYYY.",
+        epilog="Quick start: -i ART --year YYYY "
+        "--target-repo https://github.com/<username>/<username> --push",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -154,29 +152,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Commits per level, applied on top of --username scaling (default: 1).",
     )
 
-    target = parser.add_argument_group("where the commits go")
+    target = parser.add_argument_group("the target repository")
     target.add_argument(
+        "-t",
         "--target-repo",
-        default=".",
-        help="Git repository that receives the commits (default: current directory).",
+        help="A repository you own, e.g. your profile README repository "
+        "https://github.com/<username>/<username>: a GitHub URL (cloned into ./<repo>) or a "
+        "local path. Empty commits go on its default branch. Required unless --dry-run.",
     )
+    target.add_argument("--push", action="store_true", help="Push to origin after drawing.")
     target.add_argument(
         "--art-branch",
         "--dedicated-branch",
         dest="art_branch",
-        help="Commit on this branch (created if missing), then return to your branch and "
-        "restore uncommitted changes. With --year, 'artworks' becomes 'artworks-<year>'.",
-    )
-    target.add_argument("--in-place", action="store_true", help="Commit on the current branch.")
-    target.add_argument(
-        "--branch",
-        default=DEFAULT_ORPHAN_BRANCH,
-        help=f"Orphan branch to create otherwise (default: {DEFAULT_ORPHAN_BRANCH}). "
-        "'current', 'HEAD' and 'in-place' mean --in-place.",
+        help="Advanced: commit on this branch (created if missing) instead, then return to "
+        "your branch. The art shows only once the branch is the default one. "
+        "With --year, 'artworks' becomes 'artworks-<year>'.",
     )
 
     parser.add_argument(
-        "--dry-run", action="store_true", help="Show the preview without committing."
+        "--dry-run",
+        action="store_true",
+        help="Show the preview without committing; with --target-repo, also check the "
+        "repository and count the commits that are new.",
     )
     parser.add_argument("-y", "--yes", action="store_true", help="Do not ask for confirmation.")
     parser.add_argument(
@@ -247,13 +245,12 @@ def cli() -> None:
         grid=grid,
         start_date=start,
         multiplier=multiplier,
-        branch=args.branch,
         dry_run=args.dry_run,
         yes=args.yes,
         force=args.force,
-        in_place=args.in_place,
         art_branch=art_branch,
         username=args.username,
+        push=args.push,
     )
 
 
