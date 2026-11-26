@@ -32,13 +32,28 @@ def test_grid_to_text_and_save_roundtrip(tmp_path):
     text = grid_to_text(grid)
     assert text.endswith("\n")
     assert text.splitlines()[0] == " * "
-    assert text.splitlines()[1] == "* *"
+    assert text.splitlines()[1] == "2 *"  # level 1 stays '*', higher levels are digits
     path = tmp_path / "nested" / "art.txt"
     save_grid(path, grid)
-    loaded = load_grid(path)
-    # save_grid collapses levels >0 to '*', so 2 becomes 1
-    assert loaded[1][0] == 1
-    assert loaded[0] == [0, 1, 0]
+    # Lossless: every intensity level survives a save/load round trip.
+    assert load_grid(path) == grid
+
+
+def test_grid_to_text_round_trips_all_levels(tmp_path):
+    grid = [[(r + c) % 10 for c in range(10)] for r in range(7)]
+    path = tmp_path / "levels.txt"
+    save_grid(path, grid)
+    assert load_grid(path) == grid
+
+
+def test_save_grid_keeps_shipped_examples_byte_compatible(tmp_path):
+    # Re-saving a '*'-only example must not change how it loads.
+    data = Path(__file__).resolve().parents[1] / "data"
+    for example in sorted(data.glob("*.txt")):
+        grid = load_grid(example)
+        out = tmp_path / example.name
+        save_grid(out, grid)
+        assert load_grid(out) == grid, example.name
 
 
 def test_get_first_sunday_of_year_is_sunday_in_january():
