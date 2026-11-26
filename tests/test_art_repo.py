@@ -1,20 +1,30 @@
 """Finding, cloning and pushing the art repository."""
 
+import os
+import stat
 from pathlib import Path
 
 import git
 import pytest
 
 from github_pixel_artworks.art_repo import (
+    clone_to_temp,
     default_branch,
+    has_unpushed_commits,
     is_remote_url,
     is_tool_checkout,
     local_checkout_path,
     open_art_repo,
     push_branch,
+    remove_tree,
 )
+from github_pixel_artworks.config import CLONE_TEMP_PREFIX
+from github_pixel_artworks.identity import Identity
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+IDENTITY = Identity("Test User", "test@example.com")
 
 
 def ignore(_message: str) -> None:
@@ -89,6 +99,47 @@ class TestOpenArtRepo:
 
         with pytest.raises(RuntimeError, match="already exists"):
             open_art_repo(empty_remote, base_dir=tmp_path, log=ignore)
+
+
+class TestTemporaryClone:
+    def test_clones_into_a_fresh_prefixed_temporary_folder(
+        self, empty_remote: str, temp_root: Path
+    ) -> None:
+        lines: list[str] = []
+
+        repo = clone_to_temp(empty_remote, log=lines.append)
+
+        path = Path(str(repo.working_tree_dir))
+        assert path.name == "pixel-art"
+        assert path.parent.parent == temp_root
+        assert path.parent.name.startswith(CLONE_TEMP_PREFIX)
+        assert repo.remotes.origin.url == empty_remote
+        assert any(str(path) in line for line in lines)
+
+    def test_each_clone_gets_its_own_folder(self, empty_remote: str) -> None:
+        first = clone_to_temp(empty_remote, log=ignore)
+        second = clone_to_temp(empty_remote, log=ignore)
+
+        assert first.working_tree_dir != second.working_tree_dir
+
+    def test_counts_commits_not_on_the_remote(self, filled_remote: str) -> None:
+        repo = clone_to_temp(filled_remote, log=ignore)
+        assert not has_unpushed_commits(repo)
+
+        repo.git.commit("--allow-empty", "-m", "local", env={**os.environ, **IDENTITY.env()})
+
+        assert has_unpushed_commits(repo)
+
+    def test_remove_tree_deletes_read_only_files_and_folders(self, tmp_path: Path) -> None:
+        folder = tmp_path / "clone" / ".git" / "objects"
+        folder.mkdir(parents=True)
+        (folder / "pack").write_text("x", encoding="utf-8")
+        (folder / "pack").chmod(stat.S_IREAD)
+        folder.chmod(stat.S_IREAD | stat.S_IEXEC)
+
+        remove_tree(tmp_path / "clone")
+
+        assert not (tmp_path / "clone").exists()
 
 
 class TestDefaultBranch:

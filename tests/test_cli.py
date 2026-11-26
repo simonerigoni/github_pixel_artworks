@@ -107,6 +107,16 @@ class TestArguments:
         assert received["push"] is True
         assert received["art_branch"] is None
 
+    def test_keep_clone_is_passed_through(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "-t", ART_REPO, "--keep-clone", "-y")
+
+        assert received["keep_clone"] is True
+
+    def test_the_clone_is_cleaned_up_by_default(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "-t", ART_REPO, "-y")
+
+        assert received["keep_clone"] is False
+
     def test_the_art_repository_is_required(
         self, run_cli, capsys: pytest.CaptureFixture[str]
     ) -> None:

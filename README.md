@@ -4,7 +4,7 @@
 
 ## Quick start
 
-The recommended target is your profile README repository, `<username>/<username>`, but any repository you own works. The tool clones it into `./<username>` and adds **empty** commits on its default branch, so no file in it changes.
+The recommended target is your profile README repository, `<username>/<username>`, but any repository you own works. The tool clones it into a new temporary folder (`gh-pixel-art-*` in your system's temp directory, never inside this checkout) and adds **empty** commits on its default branch, so no file in it changes. Once the art is pushed, the temporary clone is deleted.
 
 `--target-repo` is optional when the tool can find your GitHub username. It reads the git settings in effect where you run it (the repository's, your global and system ones) and stops at the first hit, saying which one it used:
 
@@ -35,7 +35,9 @@ git config --global github.user <username>
 
 3. Running the same drawing again adds nothing, and a higher `--multiplier` adds only the difference.
 
-The commits must use an email address connected to your GitHub account (`git config user.email`). The tool warns when it can tell that is not the case.
+Without `--push`, the commits exist only in the temporary clone, so it is kept: the tool prints its path and the `git -C <path> push` command to publish them. If drawing or pushing fails, the clone is kept only when it holds unpushed art commits (its path is printed); otherwise it is deleted. `--keep-clone` always keeps it. A local path given as the target is never deleted.
+
+The commits are authored with the git identity (`user.name` and `user.email`) of the target repository if it has its own, otherwise the one in effect where you run the tool: this checkout's local config, then your global and system config. If none is set, the tool stops before cloning anything and tells you to run `git config --global user.email <an email on your GitHub account>` (and `user.name`). The email must be connected to your GitHub account; the tool warns when it can tell that is not the case.
 
 Trade-offs: the art adds extra empty commits to that repository's log (one per shade step of each pixel, from dozens to a few hundred), and deleting the repository (or rewriting its history) removes the art from your profile.
 
@@ -113,8 +115,9 @@ Main options:
 
 - `-i, --input`: the artwork file (required)
 - `--year`, `--start-date` or `--auto-align`: where the art starts (one is required). `--year` starts on the first Sunday of that year, and `--offset-weeks` shifts it to the right.
-- `-t, --target-repo`: a repository you own, such as your profile README repository, as a GitHub URL (cloned into a folder of the same name, or reused if it is already there) or a local path. The empty commits go on its default branch. It defaults to the profile README repository of the detected GitHub user (see [Quick start](#quick-start)). The tool refuses to draw into a checkout of this project.
-- `--push`: push to `origin` afterwards
+- `-t, --target-repo`: a repository you own, such as your profile README repository, as a GitHub URL (cloned into a temporary folder, see [Quick start](#quick-start)) or a local path. The empty commits go on its default branch. It defaults to the profile README repository of the detected GitHub user (see [Quick start](#quick-start)). The tool refuses to draw into a checkout of this project.
+- `--push`: push to `origin` afterwards, then delete the temporary clone of a URL target
+- `--keep-clone`: keep the temporary clone of a URL target
 - `--multiplier N`: commits per intensity level (default 1)
 - `--username NAME`: scale the intensity so level 4 matches your darkest existing day
 - `--dry-run`: preview only. With a target repository (given or detected) it also runs every check and reports how many commits are new.
@@ -127,7 +130,7 @@ Main options:
 uv run github-pixel-artworks-gui
 ```
 
-Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. The target repository is pre-filled with your profile README repository when your GitHub username is detected (see [Quick start](#quick-start)); otherwise enter one, for example `https://github.com/<username>/<username>`. **Dry run** reports how many commits are new, **Generate Art** adds them on the default branch, and **Push to GitHub** pushes them. An art branch is available as an advanced option.
+Pick a level from 1 to 4 (GitHub's four greens) and click or drag on the grid to paint. Clicking a cell that already has the selected level erases it. You can add or remove weeks, choose the year and offset, and save drawings to or load them from `data/` with their levels kept. The target repository is pre-filled with your profile README repository when your GitHub username is detected (see [Quick start](#quick-start)); otherwise enter one, for example `https://github.com/<username>/<username>`. **Dry run** reports how many commits are new, **Generate Art** adds them on the default branch, and **Push to GitHub** pushes them and then deletes the temporary clone of a URL target (kept until then, with its path in the log). An art branch is available as an advanced option.
 
 ![GUI editor with data/space_invaders.txt loaded](images/gui_editor.png)
 
@@ -154,7 +157,8 @@ The package is organised as:
 - `config.py`: every named constant, grouped by topic
 - `artwork.py`: the file format and intensity levels
 - `dates.py`: the calendar placement
-- `art_repo.py`: finding, cloning and pushing the target repository
+- `art_repo.py`: finding, cloning (into a temporary folder), pushing and deleting the target repository
+- `identity.py`: the git identity the commits are made with
 - `github.py`: usernames and their detection, the contribution calendar, remote URLs, and the email and fork checks
 - `painter.py`: `apply_drawing`, which creates the commits
 - `cli.py` and `gui.py`: the two front ends

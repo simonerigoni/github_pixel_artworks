@@ -19,6 +19,7 @@ from github_pixel_artworks import gui
 from github_pixel_artworks.config import (
     ACTIONS_PANE_MIN_WIDTH,
     CELL_SIZE,
+    CLONE_TEMP_PREFIX,
     DRAWINGS_PANE_MIN_WIDTH,
     EDITOR_PANE_MIN_WIDTH,
     EMPTY_COLOR,
@@ -242,6 +243,30 @@ class TestGenerateAndPush:
         assert answers == []
         assert len(list(git_repo.iter_commits("main"))) == 1 + 2
         assert remote.heads.main.commit == git_repo.heads.main.commit
+
+    def test_push_publishes_a_url_target_and_removes_its_temporary_clone(
+        self,
+        app: gui.PixelArtGUI,
+        answers: list[str],
+        empty_remote: str,
+        git_identity: None,
+        temp_root: Path,
+    ) -> None:
+        app.target_repo_var.set(empty_remote)
+        app.year_var.set(2026)
+        paint(app, 2, 0, 0)
+
+        app._on_generate_clicked()
+        app._drain_queues()
+        assert len(list(temp_root.glob(f"{CLONE_TEMP_PREFIX}*"))) == 1
+        app._on_push_clicked()
+        app._drain_queues()
+
+        remote = git.Repo(empty_remote.removeprefix("file://"))
+        assert answers == []
+        assert len(list(remote.iter_commits("main"))) == 2
+        assert list(temp_root.glob(f"{CLONE_TEMP_PREFIX}*")) == []
+        assert str(app.push_button.cget("state")) == tk.DISABLED
 
     def test_dry_run_reports_the_plan_without_committing(
         self, app: gui.PixelArtGUI, answers: list[str], git_repo: git.Repo

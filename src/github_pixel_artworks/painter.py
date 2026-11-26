@@ -2,6 +2,7 @@
 
 import os
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -9,7 +10,17 @@ from pathlib import Path
 import git
 from git.exc import GitCommandError
 
-from .art_repo import Log, default_branch, is_tool_checkout, open_art_repo, push_branch
+from .art_repo import (
+    Log,
+    clone_to_temp,
+    default_branch,
+    has_unpushed_commits,
+    is_remote_url,
+    is_tool_checkout,
+    open_art_repo,
+    push_branch,
+    remove_tree,
+)
 from .artwork import Grid, count_commits, validate_grid
 from .config import (
     ART_MESSAGE_PREFIX,
@@ -22,6 +33,7 @@ from .config import (
 )
 from .dates import get_first_sunday_of_year, pixel_timestamp
 from .github import commit_email_warning, fetch_is_fork, github_slug
+from .identity import Identity, MissingIdentityError, resolve_identity
 
 
 def preview(grid: Grid, start_date: datetime, multiplier: int) -> str:
@@ -53,12 +65,17 @@ def apply_drawing(
     push: bool = False,
     force: bool = False,
     dry_run: bool = False,
+    keep_clone: bool = False,
+    on_clone_kept: Callable[[Path], None] | None = None,
     log: Log = print,
 ) -> int:
     """Create the backdated commits that draw ``grid`` and return how many were made.
 
     ``target_repo`` is the art repository: a local path, or a URL that is cloned
-    into the working directory. The start is ``start_date`` or, if that is None,
+    into a new temporary folder (see ``clone_to_temp``). The temporary clone is
+    deleted at the end unless it holds art commits that are not pushed yet (no
+    ``push``, or a failed push) or ``keep_clone`` is set; a kept clone is logged
+    and passed to ``on_clone_kept``. A local path is never deleted. The start is ``start_date`` or, if that is None,
     the first Sunday of ``year`` plus ``offset_weeks`` (at most ``MAX_WEEKS``;
     negative values reach into the previous year). Each pixel is committed
     ``level * multiplier`` times at 12:00 UTC on its day.
@@ -76,12 +93,16 @@ def apply_drawing(
     uncommitted changes are stashed and the original branch and changes are
     restored afterwards. ``push`` pushes the branch to ``origin`` at the end.
 
-    Warnings are logged when the commit email or a fork would keep the art off
+    The commits are authored and committed by ``resolve_identity`` (the target's
+    own config, else the settings where the tool runs). Warnings are logged when
+    the commit email or a fork would keep the art off
     the profile of ``username`` (default: the owner of ``origin``).
 
     Raises:
         ValueError: for an invalid grid, multiplier, offset, branch name or
             missing start.
+        MissingIdentityError: if no user.name and user.email are set, before
+            anything is cloned or committed.
         RuntimeError: if the target is not a git repository, is this tool's
             checkout, is not on its default branch, or has uncommitted changes
             (unless ``force``).
@@ -100,7 +121,34 @@ def apply_drawing(
     log(preview(grid, start_date, multiplier))
     log("")
 
-    repo = open_art_repo(target_repo, log)
+    options = _Options(art_branch, username, push, force, dry_run, log)
+    if not is_remote_url(target_repo):
+        return _draw(open_art_repo(target_repo, log), grid, start_date, multiplier, options)
+    if resolve_identity() is None:
+        raise MissingIdentityError()
+    repo = clone_to_temp(target_repo, log)
+    try:
+        return _draw(repo, grid, start_date, multiplier, options)
+    finally:
+        _finish_temp_clone(repo, keep_clone, on_clone_kept, log)
+
+
+@dataclass(frozen=True)
+class _Options:
+    art_branch: str | None
+    username: str | None
+    push: bool
+    force: bool
+    dry_run: bool
+    log: Log
+
+
+def _draw(
+    repo: git.Repo, grid: Grid, start_date: datetime, multiplier: int, options: _Options
+) -> int:
+    """Draw into the opened art repository ``repo``; see ``apply_drawing``."""
+    art_branch, username, push = options.art_branch, options.username, options.push
+    force, dry_run, log = options.force, options.dry_run, options.log
     root = Path(str(repo.working_tree_dir))
     if art_branch:
         _validate_branch_name(repo, art_branch)
@@ -112,7 +160,11 @@ def apply_drawing(
     else:
         _refuse_tool_checkout(root)
         branch = _require_default_branch(repo, root)
-    for warning in _profile_warnings(repo, username):
+    identity = resolve_identity(root)
+    if identity is None:
+        raise MissingIdentityError()
+    log(f"Committing as {identity}.")
+    for warning in _profile_warnings(repo, username, identity):
         log(f"Warning: {warning}")
 
     if dry_run:
@@ -133,7 +185,7 @@ def apply_drawing(
         _ensure_clean(repo, force)
         plan = _plan(repo, "HEAD", grid, start_date, multiplier)
         log(f"{plan.new_commits} commits to create, {plan.present} already present.")
-        total = _commit_artwork(repo, branch, plan, log)
+        total = _commit_artwork(repo, branch, plan, identity, log)
         if total:
             log(f"Created {total} backdated commits on branch {branch}.")
         else:
@@ -147,6 +199,30 @@ def apply_drawing(
     else:
         log(f"To publish the art, run: git -C {root} push -u origin {branch}")
     return total
+
+
+def _finish_temp_clone(
+    repo: git.Repo, keep: bool, on_kept: Callable[[Path], None] | None, log: Log
+) -> None:
+    """Delete a temporary clone, unless asked to keep it or it holds unpushed art."""
+    path = Path(str(repo.working_tree_dir))
+    unpushed = _has_unpushed(repo)
+    repo.close()
+    if keep or unpushed:
+        reason = "as asked" if keep else "because it holds art commits that are not pushed yet"
+        log(f"Kept the temporary clone at {path} {reason}. Delete it once the art is pushed.")
+        if on_kept:
+            on_kept(path)
+        return
+    remove_tree(path.parent)
+    log(f"Removed the temporary clone {path}.")
+
+
+def _has_unpushed(repo: git.Repo) -> bool:
+    try:
+        return has_unpushed_commits(repo)
+    except GitCommandError:
+        return True  # when in doubt, keep the commits
 
 
 def _resolve_start_date(
@@ -195,12 +271,12 @@ def _require_default_branch(repo: git.Repo, root: Path) -> str:
     return current
 
 
-def _profile_warnings(repo: git.Repo, username: str | None) -> list[str]:
+def _profile_warnings(repo: git.Repo, username: str | None, identity: Identity) -> list[str]:
     """Return why the commits might not show on the profile of ``username``."""
     slug = github_slug(repo.remotes.origin.url) if "origin" in repo.remotes else None
     login = username or (slug[0] if slug else None)
     warnings = []
-    if email_warning := commit_email_warning(_commit_email(repo), login):
+    if email_warning := commit_email_warning(identity.email, login):
         warnings.append(email_warning)
     if slug and fetch_is_fork(*slug):
         warnings.append(
@@ -208,16 +284,6 @@ def _profile_warnings(repo: git.Repo, username: str | None) -> list[str]:
             "forks. Use a repository you own, e.g. your profile README repository."
         )
     return warnings
-
-
-def _commit_email(repo: git.Repo) -> str | None:
-    """Return the email git will put on the commits, if it is configured."""
-    if email := os.environ.get("GIT_AUTHOR_EMAIL"):
-        return email
-    try:
-        return repo.git.config("--get", "user.email") or None
-    except GitCommandError:
-        return None
 
 
 def _current_ref(repo: git.Repo) -> str:
@@ -314,7 +380,7 @@ def _art_commits_per_day(repo: git.Repo, rev: str) -> Counter[date]:
     return days
 
 
-def _commit_artwork(repo: git.Repo, branch: str, plan: _Plan, log: Log) -> int:
+def _commit_artwork(repo: git.Repo, branch: str, plan: _Plan, identity: Identity, log: Log) -> int:
     """Create the commits ``plan`` still needs on top of HEAD; return how many.
 
     ``branch`` only moves once every commit exists, so a failure leaves it untouched.
@@ -325,7 +391,7 @@ def _commit_artwork(repo: git.Repo, branch: str, plan: _Plan, log: Log) -> int:
     for pixel in plan.pixels:
         for index in range(pixel.present + 1, pixel.wanted + 1):
             message = f"{ART_MESSAGE_PREFIX}({pixel.day},{pixel.week}) [{index}/{pixel.wanted}]"
-            tip = _commit_pixel(repo, tree, tip, pixel.when, message)
+            tip = _commit_pixel(repo, tree, tip, pixel.when, message, identity)
             total += 1
             if total % PROGRESS_EVERY == 0:
                 log(f"  ... {total} commits so far")
@@ -340,15 +406,21 @@ def _empty_tree(repo: git.Repo) -> str:
 
 
 def _commit_pixel(
-    repo: git.Repo, tree: str, parent: str | None, when: datetime, message: str
+    repo: git.Repo,
+    tree: str,
+    parent: str | None,
+    when: datetime,
+    message: str,
+    identity: Identity,
 ) -> str:
     """Create one empty commit of ``tree`` on ``parent``, dated ``when``; return its id.
 
     ``git commit-tree`` never reads the index, so staged work stays out of the art,
     and it runs no hooks. ``when`` is timezone-aware, so git never applies the
-    local timezone.
+    local timezone. ``identity`` is passed as the author and committer, so the
+    commit never depends on the target clone having one configured.
     """
     stamp = when.isoformat()
-    env = {**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
+    env = {**os.environ, **identity.env(), "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
     parents = ["-p", parent] if parent else []
     return repo.git.commit_tree(tree, *parents, "-m", message, env=env)

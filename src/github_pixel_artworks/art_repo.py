@@ -1,12 +1,16 @@
 """The target repository: a repo the user owns, such as their profile README repo."""
 
+import os
+import shutil
+import stat
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 import git
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
-from .config import TOOL_MARKER, URL_SCHEMES
+from .config import CLONE_TEMP_PREFIX, TOOL_MARKER, URL_SCHEMES
 
 type Log = Callable[[str], None]
 
@@ -19,6 +23,11 @@ def is_remote_url(target: str) -> bool:
     return bool(colon) and "@" in user_host and "/" not in user_host and "\\" not in user_host
 
 
+def repo_folder_name(url: str) -> str:
+    """Return the folder name ``git clone`` would use for ``url``."""
+    return url.rstrip("/").removesuffix(".git").replace(":", "/").rsplit("/", 1)[-1]
+
+
 def local_checkout_path(target: str, base_dir: Path | None = None) -> Path:
     """Return where the art repository lives on disk.
 
@@ -27,8 +36,45 @@ def local_checkout_path(target: str, base_dir: Path | None = None) -> Path:
     """
     if not is_remote_url(target):
         return Path(target)
-    name = target.rstrip("/").removesuffix(".git").replace(":", "/").rsplit("/", 1)[-1]
-    return (base_dir or Path.cwd()) / name
+    return (base_dir or Path.cwd()) / repo_folder_name(target)
+
+
+def clone_to_temp(url: str, log: Log) -> git.Repo:
+    """Clone ``url`` into a new temporary folder and return the clone.
+
+    The folder is made by ``tempfile.mkdtemp`` with ``CLONE_TEMP_PREFIX``, so it is
+    never inside the tool's checkout and every run starts from what is on GitHub.
+    The caller removes it (``remove_tree`` on the clone's parent) when done.
+    """
+    folder = Path(tempfile.mkdtemp(prefix=CLONE_TEMP_PREFIX))
+    path = folder / repo_folder_name(url)
+    log(f"Cloning {url} into the temporary folder {path}...")
+    try:
+        return git.Repo.clone_from(url, path)
+    except Exception:
+        remove_tree(folder)
+        raise
+
+
+def has_unpushed_commits(repo: git.Repo) -> bool:
+    """Return True if a local branch holds commits that no remote branch has."""
+    return repo.git.rev_list("--count", "--branches", "--not", "--remotes") != "0"
+
+
+def remove_tree(path: Path) -> None:
+    """Delete ``path`` and everything in it, including read-only files.
+
+    Git marks object files read-only, which makes a plain ``shutil.rmtree`` fail
+    on Windows, so a failed delete is retried after making the item writable.
+    """
+
+    def make_writable_and_retry(func: Callable[[str], object], item: str, _error: object) -> None:
+        for target in (os.path.dirname(item), item):
+            if os.path.exists(target):
+                os.chmod(target, stat.S_IRWXU)
+        func(item)
+
+    shutil.rmtree(path, onexc=make_writable_and_retry)
 
 
 def open_art_repo(target: str, log: Log, base_dir: Path | None = None) -> git.Repo:

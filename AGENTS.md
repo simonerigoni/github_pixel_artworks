@@ -13,13 +13,14 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
   - `config.py`: every named constant (levels, palette, year range, GitHub URLs and regexes, commit marker, exit codes, GUI and diagram layout), grouped by topic
   - `artwork.py`: the 7-row file format, intensity levels, colours, drawing paths
   - `dates.py`: Sunday alignment, the auto-align window, pixel timestamps
-  - `art_repo.py`: opening or cloning the target repository, its default branch, pushing
+  - `art_repo.py`: opening the target repository or cloning a URL into a `tempfile.mkdtemp` folder (`CLONE_TEMP_PREFIX`), its default branch, unpushed-commit check, pushing, and `remove_tree` (handles read-only `.git` files on Windows)
+  - `identity.py`: `git_config` (effective settings in a folder) and `resolve_identity`: `GIT_AUTHOR_*`, then the target's local config, then the settings where the tool runs; passed to `commit-tree` as author and committer env
   - `github.py`: username validation and detection (github.user, no-reply email, login-shaped user.name, unauthenticated commit search by email, optional gh), the contribution calendar, remote URLs, email and fork checks
-  - `painter.py`: `preview` and `apply_drawing`, which both front ends call
+  - `painter.py`: `preview` and `apply_drawing`, which both front ends call; it fails with `MissingIdentityError` before cloning or committing, and deletes a temporary clone unless it holds unpushed art or `keep_clone` is set
   - `cli.py`, `gui.py`: the front ends
 - `data/`: example artworks (see `data/DATA.md`), also where the GUI saves
 - `images/`: README figures; regenerate `grid_diagram.svg` with `uv run python scripts/render_grid_diagram.py`
-- `tests/`: one test module per source module; `conftest.py` provides a throwaway `git_repo`, bare `file://` remotes, an empty global git config, an empty working directory, no `gh`, and blocks the network
+- `tests/`: one test module per source module; `conftest.py` provides a throwaway `git_repo`, bare `file://` remotes, an empty global git config and HOME, no git identity env, an empty working directory, a per-test temp dir for clones, a `source_checkout` with a local-only identity, no `gh`, and blocks the network
 
 ## Workflow
 
