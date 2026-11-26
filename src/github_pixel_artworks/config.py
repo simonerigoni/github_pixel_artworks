@@ -174,7 +174,11 @@ LOG_LINES = 4  # requested Log height; it grows with the window
 HINT_COLOR = "#555"
 QUEUE_POLL_MS = 80
 STATUS_READY = "Ready"
-STATUS_HINT = "Ready - draw on the grid, pick a year and the target repository, then Generate."
+STATUS_HINT = (
+    "Ready - draw on the grid, pick a year and the target repository, then Generate Commits."
+)
+GENERATE_BUTTON_TEXT = "Generate Commits"
+"""Label of the button that adds the art commits, and of its confirmation dialogs."""
 
 # Grid diagram (scripts/render_grid_diagram.py) -------------------------------
 

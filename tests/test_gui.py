@@ -22,8 +22,10 @@ from github_pixel_artworks.config import (
     DRAWINGS_PANE_MIN_WIDTH,
     EDITOR_PANE_MIN_WIDTH,
     EMPTY_COLOR,
+    GENERATE_BUTTON_TEXT,
     LEVEL_COLORS,
     MAX_WEEKS,
+    STATUS_HINT,
     TARGET_CLONE_DIR_NAME,
 )
 
@@ -334,6 +336,12 @@ class TestLayout:
 
         assert pane_widths(window)[2] >= ACTIONS_PANE_MIN_WIDTH
         assert window.canvas.xview() != (0.0, 1.0)
+
+    def test_the_generate_button_is_labelled_generate_commits(
+        self, window: gui.PixelArtGUI
+    ) -> None:
+        assert str(window.generate_button.cget("text")) == GENERATE_BUTTON_TEXT
+        assert window.status_var.get() == STATUS_HINT
 
     def test_every_action_and_the_log_fit_a_small_window(self, window: gui.PixelArtGUI) -> None:
         resize(window, 1024, 420)
