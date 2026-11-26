@@ -159,6 +159,7 @@ The tool handles these by default. It commits on the default branch of a reposit
 The package is organised as:
 
 - `config.py`: every named constant, grouped by topic
+- `pattern_data.py`: font glyphs, tetrominoes and sprite bitmaps used by the pattern generators
 - `artwork.py`: the file format and intensity levels
 - `dates.py`: the calendar placement
 - `art_repo.py`: finding, cloning a URL into `target_cloned_repo/`, pushing and deleting the target repository

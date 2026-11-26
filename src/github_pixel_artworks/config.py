@@ -7,6 +7,16 @@ importable from their original modules too.
 import re
 from pathlib import Path
 
+from .pattern_data import PATTERN_FONT as PATTERN_FONT
+from .pattern_data import PATTERN_FONT_GAP as PATTERN_FONT_GAP
+from .pattern_data import PATTERN_FONT_HEIGHT as PATTERN_FONT_HEIGHT
+from .pattern_data import PATTERN_FONT_WIDTH as PATTERN_FONT_WIDTH
+from .pattern_data import PATTERN_HEART_SPRITE as PATTERN_HEART_SPRITE
+from .pattern_data import PATTERN_ICON_DUNGEON_SPRITES as PATTERN_ICON_DUNGEON_SPRITES
+from .pattern_data import PATTERN_ICON_NATURE_SPRITES as PATTERN_ICON_NATURE_SPRITES
+from .pattern_data import PATTERN_INVADER_SPRITES as PATTERN_INVADER_SPRITES
+from .pattern_data import TETROMINOES as TETROMINOES
+
 # Artwork grid and intensity levels ------------------------------------------
 
 DAYS_PER_WEEK = 7
@@ -194,236 +204,8 @@ PATTERN_OVERFLOW_ERROR = "error"
 PATTERN_OVERFLOW_TRUNCATE = "truncate"
 PATTERN_OVERFLOWS = (PATTERN_OVERFLOW_ERROR, PATTERN_OVERFLOW_TRUNCATE)
 
-# 5x7 glyphs, one row per integer; bit 4 is the leftmost pixel.
-PATTERN_FONT_WIDTH = 5
-PATTERN_FONT_HEIGHT = 7
-PATTERN_FONT_GAP = 1
-PATTERN_FONT: dict[str, tuple[int, int, int, int, int, int, int]] = {
-    "A": (0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001),
-    "B": (0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110),
-    "C": (0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110),
-    "D": (0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110),
-    "E": (0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111),
-    "F": (0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000),
-    "G": (0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110),
-    "H": (0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001),
-    "I": (0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110),
-    "J": (0b00111, 0b00010, 0b00010, 0b00010, 0b00010, 0b10010, 0b01100),
-    "K": (0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001),
-    "L": (0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111),
-    "M": (0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001),
-    "N": (0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001),
-    "O": (0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110),
-    "P": (0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000),
-    "Q": (0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101),
-    "R": (0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001),
-    "S": (0b01110, 0b10001, 0b10000, 0b01110, 0b00001, 0b10001, 0b01110),
-    "T": (0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100),
-    "U": (0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110),
-    "V": (0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100),
-    "W": (0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b10101, 0b01010),
-    "X": (0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001),
-    "Y": (0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100),
-    "Z": (0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111),
-    "0": (0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110),
-    "1": (0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110),
-    "2": (0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111),
-    "3": (0b01110, 0b10001, 0b00001, 0b00110, 0b00001, 0b10001, 0b01110),
-    "4": (0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010),
-    "5": (0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110),
-    "6": (0b01110, 0b10001, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110),
-    "7": (0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000),
-    "8": (0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110),
-    "9": (0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b10001, 0b01110),
-    " ": (0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000),
-    ".": (0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100),
-    ",": (0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100, 0b01000),
-    "!": (0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b00100),
-    "?": (0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b00000, 0b00100),
-    "-": (0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000),
-    "'": (0b00100, 0b00100, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000),
-    ":": (0b00000, 0b00100, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000),
-    "/": (0b00001, 0b00010, 0b00010, 0b00100, 0b01000, 0b01000, 0b10000),
-}
-"""Uppercase letters, digits and a few punctuation marks for the text pattern."""
-
-# Each tetromino is the rotations of four (row, column) offsets from a bounding box.
-type _Cells = tuple[tuple[int, int], ...]
-TETROMINOES: tuple[tuple[_Cells, ...], ...] = (
-    (((0, 0), (0, 1), (0, 2), (0, 3)), ((0, 0), (1, 0), (2, 0), (3, 0))),  # I
-    (((0, 0), (0, 1), (1, 0), (1, 1)),),  # O
-    (  # T
-        ((0, 1), (1, 0), (1, 1), (1, 2)),
-        ((0, 0), (1, 0), (1, 1), (2, 0)),
-        ((0, 0), (0, 1), (0, 2), (1, 1)),
-        ((0, 1), (1, 0), (1, 1), (2, 1)),
-    ),
-    (((0, 1), (0, 2), (1, 0), (1, 1)), ((0, 0), (1, 0), (1, 1), (2, 1))),  # S
-    (((0, 0), (0, 1), (1, 1), (1, 2)), ((0, 1), (1, 0), (1, 1), (2, 0))),  # Z
-    (  # J
-        ((0, 0), (1, 0), (1, 1), (1, 2)),
-        ((0, 0), (0, 1), (1, 0), (2, 0)),
-        ((0, 0), (0, 1), (0, 2), (1, 2)),
-        ((0, 1), (1, 1), (2, 0), (2, 1)),
-    ),
-    (  # L
-        ((0, 2), (1, 0), (1, 1), (1, 2)),
-        ((0, 0), (1, 0), (2, 0), (2, 1)),
-        ((0, 0), (0, 1), (0, 2), (1, 0)),
-        ((0, 0), (0, 1), (1, 1), (2, 1)),
-    ),
-)
-"""The seven tetrominoes, each as the rotations used by the tetris pattern."""
-
-# Sprite rows use '.' for empty, '#' for the primary shade and 'o' for a second shade.
-type _Sprite = tuple[str, ...]
-PATTERN_INVADER_SPRITES: tuple[_Sprite, ...] = (
-    (  # crab
-        "..#.....#..",
-        "...#...#...",
-        "..#######..",
-        ".##o###o##.",
-        "###########",
-        "#.#.....#.#",
-        "...##.##...",
-    ),
-    (  # squid
-        "...##...",
-        "..####..",
-        ".######.",
-        "##o##o##",
-        "########",
-        ".#.##.#.",
-        "#.#..#.#",
-    ),
-    (  # octopus
-        "...######...",
-        ".##########.",
-        "############",
-        "###o.##.o###",
-        "############",
-        "..###..###..",
-        ".##..##..##.",
-    ),
-)
-"""Classic Space Invader silhouettes, each at most 7 rows tall."""
-
-PATTERN_HEART_SPRITE: _Sprite = (
-    ".#.#.",
-    "#####",
-    "#####",
-    ".###.",
-    "..#..",
-)
-"""A 5-wide heart that fits in the 7-row contribution grid."""
-
-# Original 7x7 1-bit icons for the icons_dungeon and icons_nature patterns.
-PATTERN_ICON_DUNGEON_SPRITES: tuple[_Sprite, ...] = (
-    (  # sword
-        "...#...",
-        "...#...",
-        "...#...",
-        "...#...",
-        ".#####.",
-        "...#...",
-        "..###..",
-    ),
-    (  # shield
-        ".#####.",
-        "#.....#",
-        "#.#.#.#",
-        "#.....#",
-        "#.....#",
-        ".#...#.",
-        "..###..",
-    ),
-    (  # skull
-        ".#####.",
-        "#.....#",
-        "#.#.#.#",
-        "##...##",
-        ".#####.",
-        ".#.#.#.",
-        "#.#.#.#",
-    ),
-    (  # potion
-        "..###..",
-        "...#...",
-        ".#####.",
-        "#.....#",
-        "#..#..#",
-        "#.....#",
-        ".#####.",
-    ),
-    (  # key
-        ".###...",
-        ".#.#...",
-        ".###...",
-        "..#....",
-        "..#.#..",
-        "..###..",
-        "....#..",
-    ),
-    (  # heart
-        ".##.##.",
-        "#######",
-        "#######",
-        ".#####.",
-        "..###..",
-        "...#...",
-        ".......",
-    ),
-)
-"""Hand-drawn dungeon icons: sword, shield, skull, potion, key, heart."""
-
-PATTERN_ICON_NATURE_SPRITES: tuple[_Sprite, ...] = (
-    (  # tree
-        "..###..",
-        ".#####.",
-        "#######",
-        ".#####.",
-        "..#.#..",
-        "...#...",
-        "...#...",
-    ),
-    (  # mushroom
-        "..###..",
-        ".#####.",
-        "#######",
-        "#.#.#.#",
-        ".#####.",
-        "...#...",
-        "..###..",
-    ),
-    (  # flower
-        "..#.#..",
-        ".#.#.#.",
-        "..###..",
-        ".#####.",
-        "..###..",
-        "...#...",
-        "...#...",
-    ),
-    (  # leaf
-        "....##.",
-        "...#.#.",
-        "..#..##",
-        ".#..#.#",
-        "#..##..",
-        ".###...",
-        "..#....",
-    ),
-    (  # sun
-        "#..#..#",
-        ".#...#.",
-        "#.###.#",
-        "..#.#..",
-        "#.###.#",
-        ".#...#.",
-        "#..#..#",
-    ),
-)
-"""Hand-drawn nature icons: tree, mushroom, flower, leaf, sun."""
+# Font glyphs, tetrominoes and sprites are defined in pattern_data.py and
+# re-exported from this module (see the import at the top).
 
 # CLI exit codes --------------------------------------------------------------
 
@@ -467,8 +249,9 @@ ACTIONS_PANE_MIN_WIDTH = 240
 DRAWING_BUTTON_WIDTH = 7
 """Characters; keeps Load, Delete and Refresh on one row of the drawings pane."""
 HINT_PADDING = 24
-LOG_LINES = 4  # requested Log height; it grows with the window
 """Pixels; hints wrap at the actions pane width minus this."""
+LOG_LINES = 4
+"""Requested Log height in lines; the widget grows with the window."""
 HINT_COLOR = "#555"
 QUEUE_POLL_MS = 80
 STATUS_READY = "Ready"
