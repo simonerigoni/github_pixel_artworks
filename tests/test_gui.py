@@ -25,9 +25,12 @@ from github_pixel_artworks.config import (
     GENERATE_BUTTON_TEXT,
     LEVEL_COLORS,
     MAX_WEEKS,
+    PATTERN_TETRIS,
+    PATTERN_TEXT,
     STATUS_HINT,
     TARGET_CLONE_DIR_NAME,
 )
+from github_pixel_artworks.patterns import generate
 
 LOG_MIN_HEIGHT = 40  # pixels: a few lines of the Log stay readable
 
@@ -413,3 +416,67 @@ class TestTargetDefault:
 
         assert app.target_repo_var.get() == ""
         root.destroy()
+
+
+class TestPatternControls:
+    def test_generate_pattern_fills_the_grid_and_keeps_it_editable(
+        self, app: gui.PixelArtGUI
+    ) -> None:
+        app.pattern_var.set(PATTERN_TETRIS)
+        app._pattern_seed = 11
+        app._resize_grid(20)
+
+        app._on_generate_pattern()
+
+        assert app.grid == generate(PATTERN_TETRIS, width=20, seed=11)
+        assert "Pattern 'tetris' (seed 11)" in app.log_text.get("1.0", tk.END)
+        paint(app, 4, 0, 0)
+        assert app.grid[0][0] == 4
+
+    def test_new_seed_draws_a_different_grid(self, app: gui.PixelArtGUI) -> None:
+        app.pattern_var.set(PATTERN_TETRIS)
+        app._resize_grid(16)
+        app._on_generate_pattern()
+        first = [row[:] for row in app.grid]
+        first_seed = app._pattern_seed
+
+        app._on_generate_pattern(new_seed=True)
+
+        assert app._pattern_seed != first_seed
+        assert app.grid == generate(PATTERN_TETRIS, width=16, seed=app._pattern_seed)
+        assert app.grid != first
+
+    def test_text_pattern_widens_the_grid_to_fit(self, app: gui.PixelArtGUI) -> None:
+        app.pattern_var.set(PATTERN_TEXT)
+        app.pattern_text_var.set("SIMONE")
+
+        app._on_generate_pattern()
+
+        expected = generate(PATTERN_TEXT, width=35, seed=app._pattern_seed, text="SIMONE")
+        assert app.columns == 35
+        assert app.grid == expected
+
+    def test_text_pattern_without_text_explains_the_problem(
+        self, app: gui.PixelArtGUI, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        errors: list[str] = []
+        monkeypatch.setattr(gui.messagebox, "showerror", lambda _title, msg: errors.append(msg))
+        app.pattern_var.set(PATTERN_TEXT)
+        app.pattern_text_var.set("")
+        empty = [row[:] for row in app.grid]
+
+        app._on_generate_pattern()
+
+        assert errors
+        assert "text" in errors[0].lower()
+        assert app.grid == empty
+
+    def test_the_text_field_shows_only_for_the_text_pattern(self, window: gui.PixelArtGUI) -> None:
+        assert window.pattern_var.get() != PATTERN_TEXT
+        assert not window.pattern_text_entry.winfo_ismapped()
+
+        window.pattern_var.set(PATTERN_TEXT)
+        window._toggle_pattern_text()
+        settle(window.root)
+
+        assert window.pattern_text_entry.winfo_ismapped()

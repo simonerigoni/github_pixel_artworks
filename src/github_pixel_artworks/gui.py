@@ -7,6 +7,7 @@ main thread.
 """
 
 import queue
+import random
 import threading
 import tkinter as tk
 from collections.abc import Callable
@@ -44,6 +45,8 @@ from .config import (
     MAX_YEAR,
     MIN_COLUMNS,
     MIN_YEAR,
+    PATTERN_NAMES,
+    PATTERN_TEXT,
     QUEUE_POLL_MS,
     STATUS_HINT,
     STATUS_READY,
@@ -54,6 +57,7 @@ from .config import (
 from .dates import get_first_sunday_of_year
 from .github import detect_github_username, profile_repo_url
 from .painter import apply_drawing
+from .patterns import generate, text_width
 
 
 class PixelArtGUI:
@@ -69,6 +73,7 @@ class PixelArtGUI:
         self.level_var = tk.IntVar(value=1)
         self._stroke_value = 1
         self._push_target: tuple[Path, str, bool] | None = None
+        self._pattern_seed: int | None = None
         self._hints: list[ttk.Label] = []
         self._panes_placed = False
         self._log_queue: queue.Queue[str] = queue.Queue()
@@ -140,6 +145,67 @@ class PixelArtGUI:
             command=self._on_schedule_changed,
         ).pack(side=tk.LEFT, padx=(2, 12))
 
+    def _build_pattern_bar(self, parent: ttk.Frame) -> ttk.Frame:
+        """Controls that fill the grid with a generated pattern, then leave it editable."""
+        bar = ttk.Frame(parent)
+        ttk.Label(bar, text="Pattern:").pack(side=tk.LEFT)
+        self.pattern_var = tk.StringVar(value=PATTERN_NAMES[0])
+        self.pattern_combo = ttk.Combobox(
+            bar,
+            textvariable=self.pattern_var,
+            values=PATTERN_NAMES,
+            state="readonly",
+            width=10,
+        )
+        self.pattern_combo.pack(side=tk.LEFT, padx=4)
+        self.pattern_combo.bind("<<ComboboxSelected>>", lambda _event: self._toggle_pattern_text())
+        self.pattern_text_var = tk.StringVar()
+        self.pattern_text_entry = ttk.Entry(bar, textvariable=self.pattern_text_var, width=16)
+        self.generate_pattern_button = ttk.Button(
+            bar, text="Generate pattern", command=self._on_generate_pattern
+        )
+        self.generate_pattern_button.pack(side=tk.LEFT, padx=4)
+        self.new_seed_button = ttk.Button(
+            bar, text="New seed", command=lambda: self._on_generate_pattern(new_seed=True)
+        )
+        self.new_seed_button.pack(side=tk.LEFT)
+        self._toggle_pattern_text()
+        return bar
+
+    def _toggle_pattern_text(self) -> None:
+        """Show the text field only for the text pattern."""
+        if self.pattern_var.get() == PATTERN_TEXT:
+            self.pattern_text_entry.pack(side=tk.LEFT, padx=4, after=self.pattern_combo)
+        else:
+            self.pattern_text_entry.pack_forget()
+
+    def _on_generate_pattern(self, new_seed: bool = False) -> None:
+        """Fill the editor with the selected pattern; the user can still paint afterwards."""
+        name = self.pattern_var.get()
+        text = self.pattern_text_var.get()
+        if name == PATTERN_TEXT and not text.strip():
+            messagebox.showerror(
+                "Generate pattern", "Enter the text to draw (A-Z, 0-9, or . , ! ? - ' : /)."
+            )
+            return
+        width = self.columns
+        if new_seed or self._pattern_seed is None:
+            self._pattern_seed = random.randrange(2**31)
+        try:
+            if name == PATTERN_TEXT:
+                needed = text_width(text)
+                if needed > MAX_WEEKS:
+                    raise ValueError(
+                        f"{text!r} needs {needed} weeks; the grid is at most {MAX_WEEKS} wide."
+                    )
+                width = max(width, needed)
+            self.grid = generate(name, width=width, seed=self._pattern_seed, text=text)
+        except ValueError as error:
+            messagebox.showerror("Generate pattern", str(error))
+            return
+        self._redraw()
+        self._log(f"Pattern '{name}' (seed {self._pattern_seed}).")
+
     def _build_panes(self) -> None:
         self._panes = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         self._panes.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
@@ -170,6 +236,7 @@ class PixelArtGUI:
 
     def _build_editor_pane(self, parent: ttk.PanedWindow) -> ttk.Frame:
         pane = ttk.Frame(parent)
+        self._build_pattern_bar(pane).pack(fill=tk.X, padx=4, pady=(4, 0))
         self.canvas = tk.Canvas(
             pane,
             width=EDITOR_PANE_MIN_WIDTH,

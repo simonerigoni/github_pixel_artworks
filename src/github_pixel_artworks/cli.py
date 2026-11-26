@@ -16,6 +16,8 @@ from .config import (
     MAX_WEEKS,
     MAX_YEAR,
     MIN_YEAR,
+    PATTERN_NAMES,
+    PATTERN_TEXT,
     SUNDAY,
     YEAR_BRANCH_PLACEHOLDERS,
 )
@@ -27,6 +29,7 @@ from .github import (
     profile_repo_url,
 )
 from .painter import apply_drawing, preview
+from .patterns import generate
 
 
 def perform_pixel_art(
@@ -124,17 +127,35 @@ def build_parser() -> argparse.ArgumentParser:
         prog="github-pixel-artworks",
         description="Draw pixel art on your GitHub contribution graph with backdated commits.",
         epilog="Quick start: -i ART --year YYYY "
-        "--target-repo https://github.com/<username>/<username> --push",
+        "--target-repo https://github.com/<username>/<username> --push. "
+        "Or: --pattern tetris --year YYYY --dry-run",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
         "-i",
         "--input",
         "--artwork",
         dest="input",
-        required=True,
         type=Path,
         help="Artwork file: 7 lines (Sunday to Saturday), one character per week.",
+    )
+    source.add_argument(
+        "--pattern",
+        choices=PATTERN_NAMES,
+        help="Generate a grid instead of reading a file: "
+        + ", ".join(PATTERN_NAMES)
+        + ". Use --pattern-text with 'text', and --seed to reproduce a result.",
+    )
+    parser.add_argument(
+        "--pattern-text",
+        default="",
+        help="Letters, digits and punctuation to draw when --pattern is text.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="Random seed for --pattern, so the same run can be reproduced.",
     )
 
     start = parser.add_argument_group("where the art starts (one is required)")
@@ -258,15 +279,27 @@ def _resolve_profile(args: argparse.Namespace) -> tuple[str | None, str | None]:
     return username, target_repo
 
 
+def _resolve_grid(args: argparse.Namespace) -> Grid:
+    """Load the artwork file, or generate a named pattern."""
+    if args.pattern:
+        if args.pattern == PATTERN_TEXT and not args.pattern_text.strip():
+            raise ValueError("--pattern-text is required when --pattern is text.")
+        return generate(args.pattern, seed=args.seed, text=args.pattern_text)
+    try:
+        return load_grid(args.input)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"could not load artwork: {error}") from error
+
+
 def cli() -> None:
     """Entry point of the ``github-pixel-artworks`` command."""
     parser = build_parser()
     args = parser.parse_args()
 
     try:
-        grid = load_grid(args.input)
+        grid = _resolve_grid(args)
     except (OSError, ValueError) as error:
-        _fail(f"could not load artwork: {error}", EXIT_BAD_ARTWORK)
+        _fail(str(error), EXIT_BAD_ARTWORK if args.input else EXIT_BAD_ARGUMENT)
     if args.multiplier < 1:
         _fail("--multiplier must be at least 1.", EXIT_BAD_ARGUMENT)
     if args.offset_weeks > MAX_WEEKS:
