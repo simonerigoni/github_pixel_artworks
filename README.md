@@ -137,6 +137,7 @@ The tool handles these by default. It commits on the default branch of a reposit
 
 The package is organised as:
 
+- `config.py`: every named constant, grouped by topic
 - `artwork.py`: the file format and intensity levels
 - `dates.py`: the calendar placement
 - `art_repo.py`: finding, cloning and pushing the target repository

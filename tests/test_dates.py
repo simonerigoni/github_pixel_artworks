@@ -2,8 +2,8 @@
 
 from datetime import UTC, date, datetime, timedelta
 
+from github_pixel_artworks.config import SUNDAY
 from github_pixel_artworks.dates import (
-    SUNDAY,
     get_auto_start_date,
     get_first_sunday_of_year,
     next_sunday,

@@ -6,7 +6,7 @@ from pathlib import Path
 import git
 import pytest
 
-from github_pixel_artworks.artwork import MAX_WEEKS
+from github_pixel_artworks.config import MAX_WEEKS
 from github_pixel_artworks.painter import apply_drawing, preview
 
 ONE_PIXEL_LEVEL_TWO = [[2], [0], [0], [0], [0], [0], [0]]

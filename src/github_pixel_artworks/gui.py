@@ -18,44 +18,35 @@ from tkinter.scrolledtext import ScrolledText
 import git
 
 from .art_repo import local_checkout_path, push_branch
-from .artwork import (
+from .artwork import Grid, count_commits, drawing_path, level_color, load_grid, save_grid
+from .config import (
+    ART_BRANCH_PREFIX,
+    CANVAS_BORDER,
+    CELL_OUTLINE,
+    CELL_SIZE,
+    DARK_LEVEL_TEXT_FROM,
+    DATA_DIR,
     DAYS_PER_WEEK,
+    DEFAULT_COLUMNS,
+    DRAWING_BUTTON_WIDTH,
+    DRAWINGS_PANE_WIDTH,
+    EDITOR_PANE_PADDING,
+    GRID_BACKGROUND,
+    HINT_COLOR,
+    HINT_WIDTH,
     LEVEL_COLORS,
     MAX_WEEKS,
-    Grid,
-    count_commits,
-    drawing_path,
-    level_color,
-    load_grid,
-    save_grid,
+    MAX_YEAR,
+    MIN_COLUMNS,
+    MIN_YEAR,
+    QUEUE_POLL_MS,
+    STATUS_HINT,
+    STATUS_READY,
+    WINDOW_GEOMETRY,
+    WINDOW_MIN_SIZE,
 )
-from .dates import MAX_YEAR, MIN_YEAR, get_first_sunday_of_year
+from .dates import get_first_sunday_of_year
 from .painter import apply_drawing
-
-DATA_DIR = Path("data")
-
-CELL_SIZE = 18
-GRID_BACKGROUND = "#f0f0f0"
-CELL_OUTLINE = "#999"
-CANVAS_BORDER = "#888"
-DARK_LEVEL_TEXT_FROM = 3
-"""Level from which the picker button label is white instead of black."""
-
-DEFAULT_COLUMNS = 10
-MIN_COLUMNS = 3
-
-WINDOW_GEOMETRY = "1540x600"
-WINDOW_MIN_SIZE = (700, 500)
-DRAWINGS_PANE_WIDTH = 210
-DRAWING_BUTTON_WIDTH = 7
-"""Characters; keeps Load, Delete and Refresh on one row of the drawings pane."""
-EDITOR_PANE_PADDING = 24
-HINT_WIDTH = 300
-"""Pixels; wrap width of the hints under the inputs."""
-HINT_COLOR = "#555"
-QUEUE_POLL_MS = 80
-STATUS_READY = "Ready"
-STATUS_HINT = "Ready - draw on the grid, pick a year and the target repository, then Generate."
 
 
 class PixelArtGUI:
@@ -350,8 +341,12 @@ class PixelArtGUI:
         except tk.TclError:  # the spinbox holds a non-number while typing
             return
         current = self.art_branch_var.get().strip()
-        if not current or current == "artworks" or current.startswith("artworks-"):
-            self.art_branch_var.set(f"artworks-{year}")
+        if (
+            not current
+            or current == ART_BRANCH_PREFIX
+            or current.startswith(f"{ART_BRANCH_PREFIX}-")
+        ):
+            self.art_branch_var.set(f"{ART_BRANCH_PREFIX}-{year}")
 
     # Drawing files ---------------------------------------------------------
 

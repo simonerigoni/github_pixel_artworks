@@ -16,7 +16,7 @@ import git
 import pytest
 
 from github_pixel_artworks import gui
-from github_pixel_artworks.artwork import EMPTY_COLOR, LEVEL_COLORS
+from github_pixel_artworks.config import EMPTY_COLOR, LEVEL_COLORS
 
 
 @pytest.fixture
