@@ -18,7 +18,13 @@ from tkinter.scrolledtext import ScrolledText
 
 import git
 
-from .art_repo import is_remote_url, push_branch, remove_dir_if_empty, remove_tree
+from .art_repo import (
+    is_remote_url,
+    push_branch,
+    redact_urls_in,
+    remove_dir_if_empty,
+    remove_tree,
+)
 from .artwork import Grid, count_commits, drawing_path, level_color, load_grid, save_grid
 from .config import (
     ACTIONS_PANE_MIN_WIDTH,
@@ -708,7 +714,7 @@ class PixelArtGUI:
                     branch = art_branch or _active_branch(git.Repo(checkout))
                     self._call_in_ui(lambda: self._set_push_target(checkout, branch, temporary))
             except Exception as error:  # report any failure in the log
-                self._queue_log(f"Error: {error}")
+                self._queue_log(f"Error: {redact_urls_in(str(error))}")
             finally:
                 self._call_in_ui(lambda: self.generate_button.config(state=tk.NORMAL))
                 self._call_in_ui(lambda: self.dry_run_button.config(state=tk.NORMAL))
@@ -743,7 +749,7 @@ class PixelArtGUI:
                     remove_dir_if_empty(parent)
                     self._queue_log(f"Removed the clone {checkout}.")
             except Exception as error:  # report any failure in the log
-                self._queue_log(f"Error: push failed: {error}")
+                self._queue_log(f"Error: push failed: {redact_urls_in(str(error))}")
             finally:
                 done = temporary and pushed
                 self._call_in_ui(lambda: self._after_push(done))

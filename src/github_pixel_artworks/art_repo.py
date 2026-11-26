@@ -1,10 +1,12 @@
 """The target repository: a repo the user owns, such as their profile README repo."""
 
 import os
+import re
 import shutil
 import stat
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import git
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
@@ -22,9 +24,51 @@ def is_remote_url(target: str) -> bool:
     return bool(colon) and "@" in user_host and "/" not in user_host and "\\" not in user_host
 
 
+_UNSAFE_FOLDER_NAMES = frozenset({"", ".", ".."})
+_REMOTE_URL_RE = re.compile(
+    r"((?:https?|ssh|git|file)://[^\s'\"<>]+)",
+    re.IGNORECASE,
+)
+
+
 def repo_folder_name(url: str) -> str:
-    """Return the folder name ``git clone`` would use for ``url``."""
-    return url.rstrip("/").removesuffix(".git").replace(":", "/").rsplit("/", 1)[-1]
+    """Return the folder name ``git clone`` would use for ``url``.
+
+    Raises:
+        ValueError: if that name would leave the clone parent folder
+            (empty, ``.``, ``..``, or a path separator).
+    """
+    name = url.rstrip("/").removesuffix(".git").rstrip("/")
+    name = name.replace(":", "/").rsplit("/", 1)[-1]
+    if name in _UNSAFE_FOLDER_NAMES or any(separator in name for separator in ("/", "\\", chr(0))):
+        raise ValueError("Could not derive a safe folder name from the repository URL.")
+    return name
+
+
+def redact_remote_url(url: str) -> str:
+    """Return ``url`` with any embedded userinfo (tokens, passwords) removed.
+
+    SSH shorthand such as ``git@github.com:owner/repo.git`` is left unchanged:
+    the ``git@`` user is not a secret. ``ssh://git@host/...`` is also left as it
+    is. Any other userinfo, including ``https://x-access-token:secret@...``, is
+    stripped so a token cannot appear in a log line or error message.
+    """
+    if "://" not in url:
+        return url
+    parts = urlsplit(url)
+    if not parts.username and not parts.password:
+        return url
+    if parts.password is None and (parts.username or "").lower() == "git":
+        return url
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+
+
+def redact_urls_in(text: str) -> str:
+    """Return ``text`` with userinfo stripped from any embedded remote URLs."""
+    return _REMOTE_URL_RE.sub(lambda match: redact_remote_url(match.group(1)), text)
 
 
 def local_checkout_path(target: str, base_dir: Path | None = None) -> Path:
@@ -79,7 +123,7 @@ def clone_url_target(url: str, log: Log) -> git.Repo:
     if path.exists():
         return _open_existing_url_clone(url, path, log)
     parent.mkdir(parents=True, exist_ok=True)
-    log(f"Cloning {url} into {path}...")
+    log(f"Cloning {redact_remote_url(url)} into {path}...")
     try:
         return git.Repo.clone_from(url, path)
     except Exception:
@@ -91,20 +135,17 @@ def clone_url_target(url: str, log: Log) -> git.Repo:
 
 def _open_existing_url_clone(url: str, path: Path, log: Log) -> git.Repo:
     """Reuse ``path`` when it is a safe clone of ``url``; otherwise raise."""
-    try:
-        repo = git.Repo(path)
-    except InvalidGitRepositoryError, NoSuchPathError:
-        repo = None
+    repo = _try_open(path)
     if repo is None or "origin" not in repo.remotes or repo.remotes.origin.url != url:
         raise RuntimeError(
-            f"{path} already exists and is not a clone of {url}. Move or delete it, then try again."
+            f"{path} already exists and is not a clone of {redact_remote_url(url)}. Move or delete it, then try again."
         )
     if repo.is_dirty(untracked_files=True):
         raise RuntimeError(
             f"{path} already exists and has uncommitted changes. "
             "Commit, move or delete them, then try again."
         )
-    if _unpushed_or_unknown(repo):
+    if has_unpushed_or_unknown_commits(repo):
         log(f"Using the existing clone at {path} (it holds unpushed commits).")
         return repo
     log(f"Updating the existing clone at {path}...")
@@ -117,7 +158,12 @@ def _open_existing_url_clone(url: str, path: Path, log: Log) -> git.Repo:
     return repo
 
 
-def _unpushed_or_unknown(repo: git.Repo) -> bool:
+def has_unpushed_or_unknown_commits(repo: git.Repo) -> bool:
+    """Return True if a local branch may hold commits no remote has.
+
+    A failed check is treated as unpushed, so a clone is never reset or deleted
+    when the state cannot be read.
+    """
     try:
         return has_unpushed_commits(repo)
     except GitCommandError:
@@ -178,26 +224,30 @@ def open_art_repo(target: str, log: Log, base_dir: Path | None = None) -> git.Re
     if not is_remote_url(target):
         return _open(path)
     if not path.exists():
-        log(f"Cloning {target} into {path}...")
+        log(f"Cloning {redact_remote_url(target)} into {path}...")
         return git.Repo.clone_from(target, path)
-    try:
-        repo = git.Repo(path)
-    except InvalidGitRepositoryError, NoSuchPathError:
-        repo = None
+    repo = _try_open(path)
     if repo is None or "origin" not in repo.remotes or repo.remotes.origin.url != target:
         raise RuntimeError(
-            f"{path} already exists and is not a clone of {target}. "
+            f"{path} already exists and is not a clone of {redact_remote_url(target)}. "
             "Move it away, or pass that folder as the target instead."
         )
     log(f"Using the existing clone at {path}.")
     return repo
 
 
-def _open(path: Path) -> git.Repo:
+def _try_open(path: Path) -> git.Repo | None:
     try:
         return git.Repo(path)
     except InvalidGitRepositoryError, NoSuchPathError:
-        raise RuntimeError(f"{path} is not a git repository") from None
+        return None
+
+
+def _open(path: Path) -> git.Repo:
+    repo = _try_open(path)
+    if repo is None:
+        raise RuntimeError(f"{path} is not a git repository")
+    return repo
 
 
 def default_branch(repo: git.Repo) -> str | None:
