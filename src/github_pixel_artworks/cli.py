@@ -22,6 +22,8 @@ from .core import (
     preview,
 )
 
+IN_PLACE_BRANCH_ALIASES = ("", "current", "HEAD", "in-place")
+
 
 def perform_pixel_art(
     target_repo: str,
@@ -34,11 +36,14 @@ def perform_pixel_art(
     force: bool = False,
     in_place: bool = False,
     art_branch: str | None = None,
+    username: str | None = None,
 ) -> None:
     """CLI-facing wrapper. Keeps the classic interactive banners + yes prompts,
     but delegates the actual repo/commit work to the reusable apply_drawing().
+    branch is the orphan branch name (ignored with in_place or art_branch).
     art_branch is passed through for dedicated branch support.
     The recommended convention is to use year-specific names (artworks-YYYY).
+    username is only used as a fallback owner when generating an orphan-branch README.
     """
     width = len(grid[0]) if grid else 0
     if width == 0:
@@ -53,9 +58,15 @@ def perform_pixel_art(
         print("Dry run complete. No commits were made.")
         return
 
-    effective_in_place = in_place or branch in ("", "current", "HEAD", "in-place")
+    # --branch current/HEAD/in-place (or an empty name) is an alias for --in-place.
+    effective_in_place = in_place or branch in IN_PLACE_BRANCH_ALIASES
 
-    if effective_in_place and in_place:
+    if art_branch:
+        print(
+            f"\nArt-branch mode: backdated art commits will be added to '{art_branch}'.\n"
+            "Your current branch and uncommitted changes are restored afterwards.\n"
+        )
+    elif effective_in_place:
         print(
             "\nIn-place mode: backdated art commits will be added directly to the current branch.\n"
             "GitHub will show contribution squares on the chosen dates.\n"
@@ -63,15 +74,13 @@ def perform_pixel_art(
             "is to host pixel artworks (as you have indicated for this repo).\n"
         )
     else:
-        WARNING = (
+        print(
             "\n"
             "!!! WARNING !!!\n"
-            "This will create backdated commits in the target repository.\n"
+            f"This will create backdated commits on a new orphan branch '{branch}'.\n"
             "GitHub will show contribution squares on those dates.\n"
-            "Use ONLY on dedicated repositories or on a fresh orphan branch.\n"
-            "Running this on your main history can make `git log` confusing.\n"
+            "Use ONLY on dedicated repositories.\n"
         )
-        print(WARNING)
 
     if not yes:
         resp = input("Type 'yes' to continue (or anything else to abort): ").strip().lower()
@@ -85,17 +94,20 @@ def perform_pixel_art(
             start_date=start_date,
             target_repo=target_repo,
             multiplier=multiplier,
-            in_place=in_place,
+            in_place=effective_in_place,
             force=force,
             art_branch=art_branch,
+            username=username,
+            branch=branch,
             log=print,
         )
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(2)
 
 
 def cli() -> None:
+    """Entry point of the ``github-pixel-artworks`` command."""
     parser = argparse.ArgumentParser(
         prog="github-pixel-artworks",
         description="Draw pixel art on your GitHub contributions graph using backdated commits.",
@@ -162,6 +174,7 @@ def cli() -> None:
         "--branch",
         default="pixel-art",
         help="Name of the orphan branch to create (default: pixel-art). "
+        "'current', 'HEAD' or 'in-place' mean the same as --in-place. "
         "Use --in-place instead when this repository's *only* purpose is pixel artworks.",
     )
     parser.add_argument(
@@ -178,7 +191,8 @@ def cli() -> None:
         help="Create or switch to a dedicated branch for the artwork commits (e.g. 'artworks-2025' or 'artworks-2016'). "
         "Highly recommended to include the target year in the name. "
         "If the working tree is dirty, changes will be auto-stashed, "
-        "the branch created/switched, art commits created on it, then stash popped. "
+        "the branch created/switched, art commits created on it, then your original "
+        "branch is checked out again and the stash popped. "
         "This avoids dirty-repo errors and keeps source development history separate from art commits. "
         "If you pass the bare name 'artworks' together with --year, it will be automatically turned into 'artworks-<year>'.",
     )
@@ -204,12 +218,16 @@ def cli() -> None:
     try:
         grid = load_grid(args.input)
     except Exception as e:
-        print(f"ERROR loading artwork: {e}", file=sys.stderr)
+        print(f"Error loading artwork: {e}", file=sys.stderr)
         sys.exit(4)
+
+    if args.multiplier < 1:
+        print("Error: --multiplier must be at least 1.", file=sys.stderr)
+        sys.exit(5)
 
     if args.offset_weeks > MAX_WEEKS:
         print(
-            f"ERROR: --offset-weeks must not exceed {MAX_WEEKS}.",
+            f"Error: --offset-weeks must not exceed {MAX_WEEKS}.",
             file=sys.stderr,
         )
         sys.exit(5)
@@ -218,11 +236,11 @@ def cli() -> None:
         try:
             start = datetime.strptime(args.start_date, "%Y-%m-%d")
         except ValueError:
-            print("ERROR: --start-date must be in YYYY-MM-DD format.", file=sys.stderr)
+            print("Error: --start-date must be in YYYY-MM-DD format.", file=sys.stderr)
             sys.exit(5)
     elif args.year is not None:
         if args.year < 2000 or args.year > 2100:
-            print("ERROR: --year must be a reasonable value (e.g. 2015-2030).", file=sys.stderr)
+            print("Error: --year must be between 2000 and 2100.", file=sys.stderr)
             sys.exit(5)
         start = get_first_sunday_of_year(args.year)
         start += timedelta(weeks=args.offset_weeks)
@@ -244,7 +262,7 @@ def cli() -> None:
                 print(
                     f"Info: using year-specific art branch '{args.art_branch}' (from --year {args.year})"
                 )
-            # If no explicit year (e.g. only --start-date or --auto-align), leave it as-is or default to "artworks"
+            # Without --year (only --start-date or --auto-align) the name is used as-is.
 
     if start.weekday() != 6:
         print(
@@ -275,6 +293,7 @@ def cli() -> None:
         force=args.force,
         in_place=args.in_place,
         art_branch=args.art_branch,
+        username=args.username,
     )
 
 

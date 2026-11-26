@@ -22,9 +22,8 @@ The owner primarily uses **this repository itself** as the canvas for the artwor
   - `cli.py` — CLI implementation + `perform_pixel_art` wrapper
   - `gui.py` — Tkinter editor (interactive grid, year selector, load/save from data/, generate + push)
 - `data/` — Sample artwork definition files (`.txt`, exactly 7 lines high, variable width; use ` ` / `.` / `x` for empty, `*` / digits for filled days)
-- `tests/` — Pytest tests (currently minimal / dummy)
+- `tests/` — Pytest tests (`conftest.py` provides a throwaway `git_repo` fixture; never point tests at this repository itself)
 - `temp/` — Original inspiration code (jarreed0/contributionartwork) — do not modify for production
-- `images/` — Screenshots and visuals (if present)
 - Root config: `pyproject.toml`, `.pre-commit-config.yaml`, `uv.lock`, `README.md`, `TODO.md`, `COVERAGE.md`, `LICENSE.md`, `AGENTS.md`
 
 **Important**: Always use the `src/` layout. Do not put new Python modules at the root.
@@ -38,7 +37,7 @@ The owner primarily uses **this repository itself** as the canvas for the artwor
   - `uv run python -m pytest ...`
   - `uv run ruff ...`
 
-Note: `pyproject.toml` declares `requires-python = ">=3.12"`, even if the setup script mentions 3.11.
+Note: `pyproject.toml` declares `requires-python = ">=3.15"` and `.python-version` pins 3.15.
 
 ### Code Quality (Mandatory)
 Pre-commit hooks **must pass** before any commit. They are defined in `.pre-commit-config.yaml` as `repo: local` hooks that run through `uv run`, so they use the same tool versions as `uv.lock` and CI:
@@ -63,7 +62,7 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
 - Framework: `pytest` + `pytest-cov`
 - Run: `uv run pytest`
 - Coverage report is automatically written to `COVERAGE.md` by the pre-commit hook.
-- Add real tests under `tests/` when adding features (currently mostly placeholder).
+- Add real tests under `tests/` when adding features; git behaviour is tested end to end against the `git_repo` fixture.
 
 ### Running
 - CLI: `uv run github-pixel-artworks --help`
@@ -95,6 +94,9 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
   - Constants at the top (e.g. `DATA_DIR`, `CELL_SIZE`).
   - The grid is **always 7 rows** (Sunday at top).
 - Error handling in `apply_drawing` / wrappers should be clear and user-friendly (especially around dirty repos and branch management).
+- Art commits are timestamped at 12:00 UTC with an explicit offset: GitHub buckets contributions by UTC day.
+- Never delete untracked or ignored files in the target repo; the art-branch flow must always restore the original branch and stash (`try/finally`).
+- Worker threads in the GUI must not touch Tk objects directly; use `_queue_log` / `_call_in_ui`.
 
 ## Important Behavioral Rules for This Project
 
@@ -119,7 +121,7 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
   - `F841` (unused variables)
   - pyright issues with `git.exc` (use direct imports) and unbound exceptions in version code.
 - **Packaging**: Uses `hatchling` + `sources = ["src"]`. After structural changes, run `uv build --wheel` and inspect the resulting `.whl` contents.
-- **CI**: `.github/workflows/ci.yml` calls the shared workflow `simonerigoni/github/.github/workflows/python-uv-ci.yml@v1` (lock check, ruff, pyright, pytest on the Python in `.python-version`). Renovate settings come from `github>simonerigoni/github:renovate-config`.
+- **CI**: `.github/workflows/ci.yml` calls the shared workflow `simonerigoni/github/.github/workflows/python-uv-ci.yml` (pinned to v1.3) (lock check, ruff, pyright, pytest on the Python in `.python-version`). Renovate settings come from `github>simonerigoni/github:renovate-config`.
 - Never commit without the hooks passing. The `uv-lock` hook is especially important.
 
 ## When in Doubt
@@ -132,7 +134,6 @@ Never bypass hooks. If a hook fails, fix the issue (do not use `--no-verify`).
 
 ## Out of Scope / Future Ideas (from TODO.md and history)
 
-- More comprehensive tests
 - Better results / gallery documentation
 - Packaging the example `data/` files or making them discoverable
 

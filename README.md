@@ -63,10 +63,12 @@ uv run github-pixel-artworks --help
 Key options:
 - `-i, --input` (required): path to a 7-line artwork file, e.g. `data/simple.txt`
 - `--year 2020`: target calendar year (recommended - starts on first Sunday of the year)
-- `--art-branch artworks-2025`: use (and auto-create/switch to) a dedicated, year-specific branch for the art commits (recommended convention: `artworks-<year>`). Recommended when using this repo itself for contributions (handles stashing of your source changes).
+- `--art-branch artworks-2025`: use (and auto-create/switch to) a dedicated, year-specific branch for the art commits (recommended convention: `artworks-<year>`). Recommended when using this repo itself for contributions: your uncommitted changes are stashed, and afterwards your original branch and changes are restored. Re-running with the same branch adds to the existing art.
 - `--in-place`: commit directly onto the current branch (use with caution or on a dedicated branch).
+- `--branch my-art`: name of the orphan branch created when neither `--in-place` nor `--art-branch` is given (default `pixel-art`; it must not exist yet).
 - `--dry-run`: preview the dates and commit count without making changes.
 - `--username yourname`: auto-scale intensity based on your current GitHub contribution max.
+- `--multiplier 2`: manual intensity multiplier (at least 1).
 - `--force`: skip the dirty-repo check.
 
 Example (dry-run preview for 2020):
@@ -99,9 +101,9 @@ The GUI lets you:
 - Load/save grids directly to the `data/` folder
 - Preview the resulting dates and commit count
 - "Generate Art" button: creates the backdated commits (with optional dedicated branch + auto-stash)
-- "Push to GitHub" button: pushes the current branch
+- "Push to GitHub" button: pushes the branch that received the art commits
 
-The GUI is built with Python's tkinter and is fully cross-platform (though this repo's setup scripts target Windows).
+The GUI is built with Python's tkinter and is cross-platform.
 
 ## Results
 
@@ -111,7 +113,7 @@ When you run the CLI or GUI with a grid + year:
 
 - The 7-row grid is interpreted as weeks (columns) × days (rows, Sunday at top).
 - Dates are calculated starting from the first Sunday of the target year (plus any `--offset-weeks`).
-- For each "on" pixel, one or more empty commits are created with the corresponding `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE`.
+- For each "on" pixel, one or more empty commits are created with the corresponding `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE`, at 12:00 UTC so the pixel lands on the right square whatever your local timezone (GitHub groups contributions by UTC day).
 - Higher intensity values (2, 3, 4+) create multiple commits on that day to produce darker green squares.
 
 These commits are "empty" (no file changes) so they don't pollute the working tree history beyond the dates.
