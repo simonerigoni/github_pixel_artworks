@@ -1,6 +1,6 @@
 """Capture images/gui_editor.png, images/gui_levels.png and images/pattern_tetris.png from the real GUI.
 
-Run under a virtual display at least as large as the default window (1540x600)
+Run under a virtual display at least as large as the default window (1840x600)
 plus the screen margin, for example:
 
     xvfb-run -a -s "-screen 0 1920x1080x24" uv run python scripts/capture_gui_screenshots.py
@@ -21,7 +21,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from github_pixel_artworks.config import CELL_SIZE, WINDOW_SIZE
+from github_pixel_artworks.config import WINDOW_SIZE
 from github_pixel_artworks.gui import PixelArtGUI
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -110,7 +110,7 @@ def select_drawing(app: PixelArtGUI, name: str) -> None:
 
 
 def _click(app: PixelArtGUI, row: int, column: int) -> None:
-    event = SimpleNamespace(x=column * CELL_SIZE + 1, y=row * CELL_SIZE + 1)
+    event = SimpleNamespace(x=column * app.cell_size + 1, y=row * app.cell_size + 1)
     app._on_canvas_click(cast(tk.Event, event))
 
 

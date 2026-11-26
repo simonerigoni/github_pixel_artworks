@@ -37,12 +37,15 @@ from .config import (
     EDITOR_PANE_MIN_WIDTH,
     GENERATE_BUTTON_TEXT,
     GRID_BACKGROUND,
+    GRID_YEAR_WEEKS,
     HINT_COLOR,
     HINT_PADDING,
     LEVEL_COLORS,
     LOG_LINES,
+    MAX_CELL_SIZE,
     MAX_WEEKS,
     MAX_YEAR,
+    MIN_CELL_SIZE,
     MIN_COLUMNS,
     MIN_YEAR,
     PATTERN_NAMES,
@@ -76,6 +79,8 @@ class PixelArtGUI:
         self._pattern_seed: int | None = None
         self._hints: list[ttk.Label] = []
         self._panes_placed = False
+        self._fit_to_width = True
+        self._syncing_cell_size = False
         self._log_queue: queue.Queue[str] = queue.Queue()
         self._ui_queue: queue.Queue[Callable[[], object]] = queue.Queue()
         self._detected_users: queue.Queue[tuple[str, str]] = queue.Queue()
@@ -85,6 +90,7 @@ class PixelArtGUI:
         self._build_panes()
         self._build_status_bar()
 
+        self.cell_size_var.trace_add("write", self._on_cell_size_edited)
         self._redraw()
         self._populate_drawings_list()
         self._suggest_art_branch()
@@ -95,6 +101,11 @@ class PixelArtGUI:
     def columns(self) -> int:
         """Number of week columns in the grid."""
         return len(self.grid[0])
+
+    @property
+    def cell_size(self) -> int:
+        """Side of one (square) cell, in pixels."""
+        return self._display_cell_size()
 
     # Layout ----------------------------------------------------------------
 
@@ -132,8 +143,27 @@ class PixelArtGUI:
                 relief=tk.RAISED,
             ).pack(side=tk.LEFT, padx=1)
 
+        self.cell_size_var = tk.IntVar(value=CELL_SIZE)
+        self._add_spinbox(
+            bar,
+            "Cell size:",
+            self.cell_size_var,
+            MIN_CELL_SIZE,
+            MAX_CELL_SIZE,
+            width=3,
+            command=self._on_cell_size_command,
+        )
+        ttk.Button(bar, text="Fit", command=self._fit_to_canvas).pack(side=tk.LEFT, padx=(0, 8))
+
     def _add_spinbox(
-        self, parent: ttk.Frame, label: str, variable: tk.IntVar, low: int, high: int, width: int
+        self,
+        parent: ttk.Frame,
+        label: str,
+        variable: tk.IntVar,
+        low: int,
+        high: int,
+        width: int,
+        command: Callable[[], object] | None = None,
     ) -> None:
         ttk.Label(parent, text=label).pack(side=tk.LEFT)
         ttk.Spinbox(
@@ -142,7 +172,7 @@ class PixelArtGUI:
             to=high,
             textvariable=variable,
             width=width,
-            command=self._on_schedule_changed,
+            command=command or self._on_schedule_changed,
         ).pack(side=tk.LEFT, padx=(2, 12))
 
     def _build_pattern_bar(self, parent: ttk.Frame) -> ttk.Frame:
@@ -250,6 +280,7 @@ class PixelArtGUI:
         scrollbar.pack(fill=tk.X, padx=4)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
 
         self.schedule_label = ttk.Label(pane, font=("TkDefaultFont", 9), justify=tk.LEFT)
         self.schedule_label.pack(anchor=tk.W, padx=4)
@@ -380,29 +411,105 @@ class PixelArtGUI:
 
     # Grid editing ----------------------------------------------------------
 
+    def _on_canvas_configure(self, _event: tk.Event) -> None:
+        """Refit or redraw when a resize changes the cell size."""
+        if self._fit_to_width:
+            self._sync_fit_cell_size()
+        if self.cell_size != getattr(self, "_drawn_cell_size", None):
+            self._redraw()
+
+    def _weeks_to_fit(self) -> int:
+        """Week columns Fit mode sizes the cells for: a year, or more if needed."""
+        try:
+            offset = int(self.offset_var.get())
+        except tk.TclError, TypeError, ValueError:
+            offset = 0
+        return max(GRID_YEAR_WEEKS, self.columns + max(0, offset))
+
+    def _fit_cell_size(self) -> int:
+        """Largest square cell that keeps every week column on the canvas."""
+        width = self.canvas.winfo_width() if hasattr(self, "canvas") else 0
+        if width <= 1:
+            return CELL_SIZE
+        return max(MIN_CELL_SIZE, min(MAX_CELL_SIZE, (width - 2) // self._weeks_to_fit()))
+
+    def _chosen_cell_size(self) -> int:
+        """Return the cell size shown in the toolbar, clamped to the allowed range."""
+        try:
+            value = int(self.cell_size_var.get())
+        except tk.TclError, TypeError, ValueError:
+            value = CELL_SIZE
+        return max(MIN_CELL_SIZE, min(MAX_CELL_SIZE, value))
+
+    def _display_cell_size(self) -> int:
+        """Return the Fit or manual size, capped so seven square rows stay visible."""
+        size = self._fit_cell_size() if self._fit_to_width else self._chosen_cell_size()
+        height = self.canvas.winfo_height() if hasattr(self, "canvas") else 0
+        if height > 1:
+            fitted_height = max(MIN_CELL_SIZE, (height - 2) // DAYS_PER_WEEK)
+            return min(size, fitted_height)
+        return size
+
+    def _on_cell_size_command(self) -> None:
+        """Leave Fit mode when the spinbox arrows change the value."""
+        self._on_cell_size_edited()
+
+    def _on_cell_size_edited(self, *_args: object) -> None:
+        """A manual cell-size change overrides Fit until Fit is pressed again."""
+        if self._syncing_cell_size:
+            return
+        self._fit_to_width = False
+        self._redraw()
+
+    def _fit_to_canvas(self) -> None:
+        """Size cells so every week column is visible, and keep doing so on resize."""
+        self._fit_to_width = True
+        self._sync_fit_cell_size()
+        self._redraw()
+
+    def _sync_fit_cell_size(self) -> None:
+        """Update the spinbox to the fitted size without treating it as a manual zoom."""
+        if not self._fit_to_width or not hasattr(self, "canvas"):
+            return
+        size = self._fit_cell_size()
+        if self._chosen_cell_size() == size:
+            return
+        self._syncing_cell_size = True
+        try:
+            self.cell_size_var.set(size)
+        finally:
+            self._syncing_cell_size = False
+
     def _redraw(self) -> None:
         """Repaint every cell and refresh the schedule summary."""
+        if not hasattr(self, "canvas"):
+            return
+        if self._fit_to_width:
+            self._sync_fit_cell_size()
+        size = self.cell_size
+        self._drawn_cell_size = size
         self.canvas.delete("all")
         for row in range(DAYS_PER_WEEK):
             for column in range(self.columns):
-                x, y = column * CELL_SIZE, row * CELL_SIZE
+                x, y = column * size, row * size
                 self.canvas.create_rectangle(
                     x,
                     y,
-                    x + CELL_SIZE,
-                    y + CELL_SIZE,
+                    x + size,
+                    y + size,
                     fill=level_color(self.grid[row][column]),
                     outline=CELL_OUTLINE,
                     tags=(f"cell_{row}_{column}",),
                 )
-        width, height = self.columns * CELL_SIZE, DAYS_PER_WEEK * CELL_SIZE
-        self.canvas.config(height=height + 2, scrollregion=(0, 0, width, height))
+        width, height = self.columns * size, DAYS_PER_WEEK * size
+        self.canvas.config(scrollregion=(0, 0, width, height))
         self._update_schedule_label()
 
     def _cell_at(self, event: tk.Event) -> tuple[int, int] | None:
         """Return the (row, column) under a mouse event, or None outside the grid."""
-        row = int(self.canvas.canvasy(event.y)) // CELL_SIZE
-        column = int(self.canvas.canvasx(event.x)) // CELL_SIZE
+        size = self.cell_size
+        row = int(self.canvas.canvasy(event.y)) // size
+        column = int(self.canvas.canvasx(event.x)) // size
         if 0 <= row < DAYS_PER_WEEK and 0 <= column < self.columns:
             return row, column
         return None
@@ -448,7 +555,11 @@ class PixelArtGUI:
     # Schedule (year / offset) ----------------------------------------------
 
     def _on_schedule_changed(self) -> None:
-        self._update_schedule_label()
+        if self._fit_to_width:
+            self._sync_fit_cell_size()
+            self._redraw()
+        else:
+            self._update_schedule_label()
         self._suggest_art_branch()
 
     def _update_schedule_label(self) -> None:

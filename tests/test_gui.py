@@ -18,17 +18,22 @@ import pytest
 from github_pixel_artworks import gui
 from github_pixel_artworks.config import (
     ACTIONS_PANE_MIN_WIDTH,
-    CELL_SIZE,
+    DAYS_PER_WEEK,
     DRAWINGS_PANE_MIN_WIDTH,
     EDITOR_PANE_MIN_WIDTH,
     EMPTY_COLOR,
     GENERATE_BUTTON_TEXT,
+    GRID_YEAR_WEEKS,
     LEVEL_COLORS,
+    MAX_CELL_SIZE,
     MAX_WEEKS,
+    MIN_CELL_SIZE,
     PATTERN_TETRIS,
     PATTERN_TEXT,
     STATUS_HINT,
     TARGET_CLONE_DIR_NAME,
+    WINDOW_SCREEN_MARGIN,
+    WINDOW_SIZE,
 )
 from github_pixel_artworks.patterns import GENERATORS, generate
 
@@ -82,15 +87,15 @@ def pane_widths(app: gui.PixelArtGUI) -> tuple[int, int, int]:
     return drawings.winfo_width(), editor.winfo_width(), actions.winfo_width()
 
 
-def at(row: int, column: int) -> tk.Event:
+def at(app: gui.PixelArtGUI, row: int, column: int) -> tk.Event:
     """A fake mouse event inside the given cell."""
-    event = SimpleNamespace(x=column * gui.CELL_SIZE + 1, y=row * gui.CELL_SIZE + 1)
+    event = SimpleNamespace(x=column * app.cell_size + 1, y=row * app.cell_size + 1)
     return cast(tk.Event, event)
 
 
 def paint(app: gui.PixelArtGUI, level: int, row: int, column: int) -> None:
     app.level_var.set(level)
-    app._on_canvas_click(at(row, column))
+    app._on_canvas_click(at(app, row, column))
 
 
 def cell_fill(app: gui.PixelArtGUI, row: int, column: int) -> str:
@@ -115,15 +120,15 @@ def load(app: gui.PixelArtGUI, name: str) -> None:
 
 class TestPainting:
     def test_drag_paints_the_stroke_value_instead_of_toggling(self, app: gui.PixelArtGUI) -> None:
-        app._on_canvas_click(at(0, 0))
-        app._on_canvas_drag(at(0, 0))
-        app._on_canvas_drag(at(0, 1))
+        app._on_canvas_click(at(app, 0, 0))
+        app._on_canvas_drag(at(app, 0, 0))
+        app._on_canvas_drag(at(app, 0, 1))
 
         assert app.grid[0][:3] == [1, 1, 0]
 
     def test_click_paints_the_selected_level(self, app: gui.PixelArtGUI) -> None:
         paint(app, 3, 1, 0)
-        app._on_canvas_drag(at(1, 1))
+        app._on_canvas_drag(at(app, 1, 1))
 
         assert app.grid[1][:3] == [3, 3, 0]
         assert cell_fill(app, 1, 0) == LEVEL_COLORS[3]
@@ -132,10 +137,10 @@ class TestPainting:
         self, app: gui.PixelArtGUI
     ) -> None:
         paint(app, 3, 1, 0)
-        app._on_canvas_drag(at(1, 1))
+        app._on_canvas_drag(at(app, 1, 1))
 
         paint(app, 3, 1, 0)
-        app._on_canvas_drag(at(1, 1))
+        app._on_canvas_drag(at(app, 1, 1))
 
         assert app.grid[1][:2] == [0, 0]
         assert cell_fill(app, 1, 0) == EMPTY_COLOR
@@ -322,12 +327,82 @@ class TestLayout:
         assert pane_widths(window)[1] > editor
         assert pane_widths(window)[2] == actions
 
-    def test_a_full_year_of_weeks_fits_in_a_wide_window(self, window: gui.PixelArtGUI) -> None:
+    def test_fit_mode_sizes_square_cells_so_a_year_fills_the_canvas_width(
+        self, window: gui.PixelArtGUI
+    ) -> None:
         window._resize_grid(MAX_WEEKS)
+        resize(window, *WINDOW_SIZE)
 
+        canvas_width = window.canvas.winfo_width()
+        canvas_height = window.canvas.winfo_height()
+        coords = window.canvas.coords("cell_0_0")
+        size = coords[2] - coords[0]
+        assert size == coords[3] - coords[1]
+        assert size == window.cell_size
+        weeks = max(GRID_YEAR_WEEKS, MAX_WEEKS)
+        assert MAX_WEEKS * size <= canvas_width
+        assert abs(size - (canvas_width - 2) // weeks) <= 1
+        assert DAYS_PER_WEEK * size < canvas_height
+        assert window.canvas.xview() == (0.0, 1.0)
+        assert window._fit_to_width
+
+    def test_the_cell_size_control_zooms_the_grid_and_leaves_fit_mode(
+        self, window: gui.PixelArtGUI
+    ) -> None:
+        resize(window, *WINDOW_SIZE)
+        original = window.cell_size
+
+        window.cell_size_var.set(MIN_CELL_SIZE)
+        settle(window.root)
+
+        assert window._fit_to_width is False
+        assert window.cell_size == MIN_CELL_SIZE
+        assert window.cell_size < original
+        coords = window.canvas.coords("cell_0_0")
+        assert coords[2] - coords[0] == MIN_CELL_SIZE
+
+    def test_fit_keeps_a_full_year_visible_when_the_window_resizes(
+        self, window: gui.PixelArtGUI
+    ) -> None:
+        window._resize_grid(MAX_WEEKS)
         resize(window, 1600, 900)
+        size_at_1600 = window.cell_size
+        assert window.canvas.xview() == (0.0, 1.0)
 
-        assert pane_widths(window)[1] >= MAX_WEEKS * CELL_SIZE
+        resize(window, *WINDOW_SIZE)
+        assert window._fit_to_width
+        assert window.cell_size > size_at_1600
+        assert window.canvas.xview() == (0.0, 1.0)
+
+    def test_fit_restores_width_fit_after_a_manual_zoom(self, window: gui.PixelArtGUI) -> None:
+        window._resize_grid(MAX_WEEKS)
+        resize(window, *WINDOW_SIZE)
+        window.cell_size_var.set(MAX_CELL_SIZE)
+        settle(window.root)
+        assert window.canvas.xview() != (0.0, 1.0)
+
+        window._fit_to_canvas()
+        settle(window.root)
+
+        assert window._fit_to_width
+        assert window.canvas.xview() == (0.0, 1.0)
+
+    def test_fit_accounts_for_offset_and_added_weeks(self, window: gui.PixelArtGUI) -> None:
+        window._resize_grid(MAX_WEEKS)
+        resize(window, *WINDOW_SIZE)
+        size_for_a_year = window.cell_size
+
+        window.offset_var.set(20)
+        window._on_schedule_changed()
+        settle(window.root)
+
+        assert window._weeks_to_fit() == MAX_WEEKS + 20
+        assert window.cell_size < size_for_a_year
+        assert window.canvas.xview() == (0.0, 1.0)
+
+    def test_the_default_window_fits_a_1080p_screen(self) -> None:
+        assert WINDOW_SIZE[0] + WINDOW_SCREEN_MARGIN <= 1920
+        assert WINDOW_SIZE[1] + WINDOW_SCREEN_MARGIN <= 1080
 
     def test_a_full_year_on_a_small_window_scrolls_instead_of_hiding_actions(
         self, window: gui.PixelArtGUI
