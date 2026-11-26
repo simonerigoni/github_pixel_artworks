@@ -179,7 +179,6 @@ def capture_pattern_previews(out_dir: Path) -> list[Path]:
         (out_dir / "pattern_mirror.png", "mirror", 36, 7, ""),
         (out_dir / "pattern_space_invaders.png", "space_invaders", 52, 11, ""),
         (out_dir / "pattern_game_of_life.png", "game_of_life", 52, 21, ""),
-        (out_dir / "pattern_snake.png", "snake", 52, 11, ""),
         (out_dir / "pattern_hearts.png", "hearts", 52, 2, ""),
         (out_dir / "pattern_stripes.png", "stripes", 52, 5, ""),
     ]

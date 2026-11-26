@@ -57,7 +57,7 @@ from .config import (
 from .dates import get_first_sunday_of_year
 from .github import detect_github_username, profile_repo_url
 from .painter import apply_drawing
-from .patterns import generate, text_width
+from .patterns import GENERATORS, generate, text_width
 
 
 class PixelArtGUI:
@@ -155,7 +155,7 @@ class PixelArtGUI:
             textvariable=self.pattern_var,
             values=PATTERN_NAMES,
             state="readonly",
-            width=10,
+            width=max(len(name) for name in GENERATORS),
         )
         self.pattern_combo.pack(side=tk.LEFT, padx=4)
         self.pattern_combo.bind("<<ComboboxSelected>>", lambda _event: self._toggle_pattern_text())

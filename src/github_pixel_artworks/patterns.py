@@ -29,9 +29,6 @@ from .config import (
     PATTERN_OVERFLOW_ERROR,
     PATTERN_OVERFLOWS,
     PATTERN_RANDOM,
-    PATTERN_SNAKE,
-    PATTERN_SNAKE_LENGTH_PER_COLUMN,
-    PATTERN_SNAKE_MIN_LENGTH,
     PATTERN_SPACE_INVADERS,
     PATTERN_STRIPES,
     PATTERN_TETRIS,
@@ -586,121 +583,6 @@ def _life_neighbours(alive: list[list[bool]], row: int, column: int) -> int:
     return count
 
 
-def _snake(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
-    """A self-avoiding snake with a tail-to-head gradient and one apple."""
-    columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
-    grid = _blank(columns)
-    length = max(
-        PATTERN_SNAKE_MIN_LENGTH,
-        min(columns * DAYS_PER_WEEK - 1, round(columns * PATTERN_SNAKE_LENGTH_PER_COLUMN)),
-    )
-    start_row = rng.randrange(DAYS_PER_WEEK)
-    start_col = rng.randrange(max(1, (columns + 3) // 4))
-    path = _snake_path(start_row, start_col, length, columns, rng)
-    _paint_snake(grid, path)
-    _place_apple(grid, path, rng)
-    return grid
-
-
-def _snake_path(
-    row: int, column: int, length: int, width: int, rng: random.Random
-) -> list[tuple[int, int]]:
-    path = [(row, column)]
-    occupied = {(row, column)}
-    heading = (0, 1)
-    for _ in range(max(0, length - 1)):
-        choices = [
-            delta
-            for delta in ((-1, 0), (1, 0), (0, -1), (0, 1))
-            if _snake_can_step(row + delta[0], column + delta[1], width, occupied, path[-1])
-        ]
-        if not choices:
-            break
-        delta = _snake_step(choices, heading, rng)
-        row += delta[0]
-        column += delta[1]
-        heading = delta
-        path.append((row, column))
-        occupied.add((row, column))
-    return path
-
-
-def _snake_step(
-    choices: list[tuple[int, int]], heading: tuple[int, int], rng: random.Random
-) -> tuple[int, int]:
-    """Prefer going right, then forwards, so the snake winds across the grid."""
-    right = (0, 1)
-    if right in choices and rng.random() < 0.6:
-        return right
-    if heading in choices and rng.random() < 0.7:
-        return heading
-    return rng.choice(choices)
-
-
-def _snake_can_step(
-    row: int,
-    column: int,
-    width: int,
-    occupied: set[tuple[int, int]],
-    current: tuple[int, int],
-) -> bool:
-    if not (0 <= row < DAYS_PER_WEEK and 0 <= column < width) or (row, column) in occupied:
-        return False
-    # Stay a simple path: do not run alongside earlier segments.
-    return not any(
-        neighbour in occupied and neighbour != current
-        for neighbour in (
-            (row - 1, column),
-            (row + 1, column),
-            (row, column - 1),
-            (row, column + 1),
-        )
-    )
-
-
-def _paint_snake(grid: Grid, path: list[tuple[int, int]]) -> None:
-    last = max(len(path) - 1, 1)
-    for index, (row, column) in enumerate(path):
-        grid[row][column] = 1 + (index * (TOP_LEVEL - 1)) // last
-
-
-def _place_apple(grid: Grid, path: list[tuple[int, int]], rng: random.Random) -> None:
-    occupied = set(path)
-    height, width = len(grid), len(grid[0])
-    isolated = [
-        (row, column)
-        for row in range(height)
-        for column in range(width)
-        if (row, column) not in occupied and not _orthogonally_touches((row, column), occupied)
-    ]
-    if not isolated:
-        return
-    row, column = isolated[rng.randrange(len(isolated))]
-    if len(path) >= 2:
-        ahead = _ahead_of_head(path, steps=2)
-        preferred = [cell for cell in isolated if cell == ahead or _chebyshev(cell, ahead) <= 2]
-        if preferred:
-            row, column = preferred[rng.randrange(len(preferred))]
-    grid[row][column] = TOP_LEVEL
-
-
-def _ahead_of_head(path: list[tuple[int, int]], steps: int) -> tuple[int, int]:
-    row, column = path[-1]
-    prow, pcol = path[-2]
-    return (row + (row - prow) * steps, column + (column - pcol) * steps)
-
-
-def _orthogonally_touches(cell: tuple[int, int], occupied: set[tuple[int, int]]) -> bool:
-    row, column = cell
-    return any(
-        (row + drow, column + dcol) in occupied for drow, dcol in ((-1, 0), (1, 0), (0, -1), (0, 1))
-    )
-
-
-def _chebyshev(left: tuple[int, int], right: tuple[int, int]) -> int:
-    return max(abs(left[0] - right[0]), abs(left[1] - right[1]))
-
-
 def _hearts(*, width: int | None, rng: random.Random, **_extra: object) -> Grid:
     """Repeat a 5-wide heart across the grid, with gaps and varying shades."""
     columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
@@ -738,7 +620,6 @@ GENERATORS: dict[str, PatternGenerator] = {
     PATTERN_TEXT: _text,
     PATTERN_SPACE_INVADERS: _space_invaders,
     PATTERN_GAME_OF_LIFE: _game_of_life,
-    PATTERN_SNAKE: _snake,
     PATTERN_HEARTS: _hearts,
     PATTERN_STRIPES: _stripes,
 }

@@ -144,7 +144,6 @@ PATTERN_TETRIS = "tetris"
 PATTERN_TEXT = "text"
 PATTERN_SPACE_INVADERS = "space_invaders"
 PATTERN_GAME_OF_LIFE = "game_of_life"
-PATTERN_SNAKE = "snake"
 PATTERN_HEARTS = "hearts"
 PATTERN_STRIPES = "stripes"
 PATTERN_NAMES = (
@@ -155,7 +154,6 @@ PATTERN_NAMES = (
     PATTERN_TEXT,
     PATTERN_SPACE_INVADERS,
     PATTERN_GAME_OF_LIFE,
-    PATTERN_SNAKE,
     PATTERN_HEARTS,
     PATTERN_STRIPES,
 )
@@ -181,9 +179,6 @@ PATTERN_LIFE_GENERATIONS = 12
 """Conway generations to evolve the seeded soup before painting."""
 PATTERN_LIFE_DENSITY = 0.32
 """Default fill chance of the Game of Life soup."""
-PATTERN_SNAKE_MIN_LENGTH = 8
-PATTERN_SNAKE_LENGTH_PER_COLUMN = 0.55
-"""Snake length is ``max(MIN_LENGTH, round(width * LENGTH_PER_COLUMN))``, plus an apple."""
 PATTERN_HEART_GAP = 3
 """Empty columns between repeated 5-wide hearts."""
 PATTERN_TEXT_ALIGN_CENTER = "center"

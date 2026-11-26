@@ -30,7 +30,7 @@ from github_pixel_artworks.config import (
     STATUS_HINT,
     TARGET_CLONE_DIR_NAME,
 )
-from github_pixel_artworks.patterns import generate
+from github_pixel_artworks.patterns import GENERATORS, generate
 
 LOG_MIN_HEIGHT = 40  # pixels: a few lines of the Log stay readable
 
@@ -470,6 +470,10 @@ class TestPatternControls:
         assert errors
         assert "text" in errors[0].lower()
         assert app.grid == empty
+
+    def test_the_combobox_fits_the_longest_pattern_name(self, app: gui.PixelArtGUI) -> None:
+        longest = max(len(name) for name in GENERATORS)
+        assert int(app.pattern_combo.cget("width")) >= longest
 
     def test_the_text_field_shows_only_for_the_text_pattern(self, window: gui.PixelArtGUI) -> None:
         assert window.pattern_var.get() != PATTERN_TEXT

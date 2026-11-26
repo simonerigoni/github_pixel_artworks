@@ -17,7 +17,6 @@ from github_pixel_artworks.config import (
     PATTERN_NAMES,
     PATTERN_OVERFLOW_TRUNCATE,
     PATTERN_RANDOM,
-    PATTERN_SNAKE,
     PATTERN_SPACE_INVADERS,
     PATTERN_STRIPES,
     PATTERN_TETRIS,
@@ -61,7 +60,6 @@ class TestShapeAndSeed:
             PATTERN_TETRIS,
             PATTERN_SPACE_INVADERS,
             PATTERN_GAME_OF_LIFE,
-            PATTERN_SNAKE,
             PATTERN_HEARTS,
             PATTERN_STRIPES,
         ],
@@ -204,20 +202,6 @@ class TestGameOfLife:
         levels = {level for row in grid for level in row}
         assert 0 in levels
         assert any(level > 0 for level in levels)
-
-
-class TestSnake:
-    def test_has_a_gradient_body_and_an_apple(self) -> None:
-        grid = generate(PATTERN_SNAKE, width=52, seed=7)
-        assert_valid(grid, 52)
-        body, apple = _snake_and_apple(grid)
-        assert len(body) >= 2
-        assert apple is not None
-        levels = [grid[row][column] for row, column in body]
-        assert levels[0] == 1
-        assert levels[-1] == TOP_LEVEL
-        assert levels == sorted(levels)
-        assert grid[apple[0]][apple[1]] == TOP_LEVEL
 
 
 class TestHearts:
@@ -416,46 +400,3 @@ def _matching_sprites(
                 found.append((origin, cells))
     found.sort()
     return found
-
-
-def _snake_and_apple(
-    grid: list[list[int]],
-) -> tuple[list[tuple[int, int]], tuple[int, int] | None]:
-    filled = [
-        (row, column) for row, line in enumerate(grid) for column, level in enumerate(line) if level
-    ]
-    isolated = [
-        cell
-        for cell in filled
-        if not any(
-            neighbour in set(filled) and neighbour != cell for neighbour in _orth_neighbours(cell)
-        )
-    ]
-    apple = isolated[0] if len(isolated) == 1 else None
-    body_cells = [cell for cell in filled if cell != apple]
-    body = _order_path(body_cells, grid)
-    return body, apple
-
-
-def _orth_neighbours(cell: tuple[int, int]) -> list[tuple[int, int]]:
-    row, column = cell
-    return [(row - 1, column), (row + 1, column), (row, column - 1), (row, column + 1)]
-
-
-def _order_path(cells: list[tuple[int, int]], grid: list[list[int]]) -> list[tuple[int, int]]:
-    remaining = set(cells)
-    endpoints = [
-        cell
-        for cell in cells
-        if sum(neighbour in remaining for neighbour in _orth_neighbours(cell)) == 1
-    ]
-    start = min(endpoints, key=lambda cell: grid[cell[0]][cell[1]]) if endpoints else cells[0]
-    path = [start]
-    remaining.remove(start)
-    while remaining:
-        nxt = next((n for n in _orth_neighbours(path[-1]) if n in remaining), None)
-        if nxt is None:
-            break
-        path.append(nxt)
-        remaining.remove(nxt)
-    return path
