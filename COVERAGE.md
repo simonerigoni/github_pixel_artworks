@@ -10,5 +10,5 @@
 | src/github\_pixel\_artworks/gui.py          |      419 |       42 |     90% |
 | src/github\_pixel\_artworks/identity.py     |       34 |        2 |     94% |
 | src/github\_pixel\_artworks/painter.py      |      216 |        8 |     96% |
-| src/github\_pixel\_artworks/patterns.py     |      430 |       23 |     95% |
-| **TOTAL**                                   | **1723** |   **84** | **95%** |
+| src/github\_pixel\_artworks/patterns.py     |      416 |       19 |     95% |
+| **TOTAL**                                   | **1709** |   **80** | **95%** |

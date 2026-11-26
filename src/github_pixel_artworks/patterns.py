@@ -626,7 +626,7 @@ def _icons_nature(*, width: int | None, rng: random.Random, **_extra: object) ->
 
 
 def _icons(sprites: tuple[tuple[str, ...], ...], *, width: int | None, rng: random.Random) -> Grid:
-    """Stamp a seeded, shuffled cycle of icons with gaps and contrasting shades."""
+    """Stamp a seeded, shuffled set of icons with gaps and contrasting shades."""
     columns = _require_width(width if width is not None else PATTERN_DEFAULT_WIDTH)
     grid = _blank(columns)
     order = list(sprites)
@@ -634,35 +634,16 @@ def _icons(sprites: tuple[tuple[str, ...], ...], *, width: int | None, rng: rand
     min_width = min(len(sprite[0]) for sprite in order)
     max_start = max(0, columns - min_width)
     column = rng.randint(0, min(PATTERN_ICON_GAP, max_start)) if max_start else 0
-    previous_sprite: tuple[str, ...] | None = None
-    previous_level: int | None = None
-    index = 0
-    while True:
-        sprite = _next_icon(order, previous_sprite, index)
+    previous: int | None = None
+    for sprite in order:
         span = len(sprite[0])
         if column + span > columns:
             break
-        level = _icon_level(rng, previous_level)
+        level = _icon_level(rng, previous)
         _stamp_sprite(grid, sprite, column, level, level)
-        previous_sprite = sprite
-        previous_level = level
+        previous = level
         column += span + PATTERN_ICON_GAP
-        index += 1
     return grid
-
-
-def _next_icon(
-    order: list[tuple[str, ...]], previous: tuple[str, ...] | None, index: int
-) -> tuple[str, ...]:
-    """Take the next shuffled icon, skipping a repeat of the previous one when possible."""
-    count = len(order)
-    sprite = order[index % count]
-    if previous is not None and sprite == previous and count > 1:
-        for step in range(1, count):
-            candidate = order[(index + step) % count]
-            if candidate != previous:
-                return candidate
-    return sprite
 
 
 def _icon_level(rng: random.Random, previous: int | None) -> int:
