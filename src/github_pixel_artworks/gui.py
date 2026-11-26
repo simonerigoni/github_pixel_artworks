@@ -37,7 +37,6 @@ from .config import (
     EDITOR_PANE_MIN_WIDTH,
     GENERATE_BUTTON_TEXT,
     GRID_BACKGROUND,
-    GRID_YEAR_WEEKS,
     HINT_COLOR,
     HINT_PADDING,
     LEVEL_COLORS,
@@ -419,12 +418,12 @@ class PixelArtGUI:
             self._redraw()
 
     def _weeks_to_fit(self) -> int:
-        """Week columns Fit mode sizes the cells for: a year, or more if needed."""
+        """Week columns Fit mode sizes the cells for: MAX_WEEKS, or more if needed."""
         try:
             offset = int(self.offset_var.get())
         except tk.TclError, TypeError, ValueError:
             offset = 0
-        return max(GRID_YEAR_WEEKS, self.columns + max(0, offset))
+        return max(MAX_WEEKS, self.columns + max(0, offset))
 
     def _fit_cell_size(self) -> int:
         """Largest square cell that keeps every week column on the canvas."""
