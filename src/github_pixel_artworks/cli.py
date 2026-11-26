@@ -40,6 +40,7 @@ def perform_pixel_art(
     art_branch: str | None = None,
     username: str | None = None,
     push: bool = False,
+    keep_clone: bool = False,
 ) -> None:
     """Preview the artwork, ask for confirmation unless ``yes``, then draw it.
 
@@ -81,6 +82,7 @@ def perform_pixel_art(
             art_branch=art_branch,
             username=username,
             push=push,
+            keep_clone=keep_clone,
             force=force,
             dry_run=dry_run,
             log=print,
@@ -167,12 +169,19 @@ def build_parser() -> argparse.ArgumentParser:
         "-t",
         "--target-repo",
         help="A repository you own, e.g. your profile README repository "
-        "https://github.com/<username>/<username>: a GitHub URL (cloned into ./<repo>) or a "
+        "https://github.com/<username>/<username>: a GitHub URL (cloned into "
+        "target_cloned_repo/<repo> at the tool's project root) or a "
         "local path. Empty commits go on its default branch. Default: the profile README "
         "repository of your GitHub user, from git config github.user, a no-reply "
         "user.email, a login-shaped user.name, GitHub's commit search by user.email, or gh.",
     )
     target.add_argument("--push", action="store_true", help="Push to origin after drawing.")
+    target.add_argument(
+        "--keep-clone",
+        action="store_true",
+        help="Keep the clone of a URL target in target_cloned_repo/. By default it is "
+        "deleted once nothing in it is unpushed, e.g. after --push.",
+    )
     target.add_argument(
         "--art-branch",
         "--dedicated-branch",
@@ -281,6 +290,7 @@ def cli() -> None:
         art_branch=art_branch,
         username=username,
         push=args.push,
+        keep_clone=args.keep_clone,
     )
 
 

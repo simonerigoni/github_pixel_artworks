@@ -33,9 +33,25 @@ def global_git_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     workdir.mkdir()
     monkeypatch.chdir(workdir)
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    for variable in ("NAME", "EMAIL"):
+        for role in ("AUTHOR", "COMMITTER"):
+            monkeypatch.delenv(f"GIT_{role}_{variable}", raising=False)
+        monkeypatch.delenv(variable, raising=False)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.setattr("github_pixel_artworks.github.GH_COMMAND", "gh-not-installed-in-tests")
+    return path
+
+
+@pytest.fixture(autouse=True)
+def clone_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Project root used for URL-target clones during a test, not the real checkout."""
+    path = tmp_path / "tool-root"
+    path.mkdir()
+    monkeypatch.setattr("github_pixel_artworks.art_repo.tool_project_root", lambda: path)
     return path
 
 
@@ -86,6 +102,19 @@ def git_repo(tmp_path: Path) -> git.Repo:
     repo.index.commit("initial")
     repo.create_remote("origin", "git@github.com:someone/canvas.git")
     return repo
+
+
+@pytest.fixture
+def source_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A checkout the tool runs from, whose identity is only in its local git config."""
+    repo = git.Repo.init(tmp_path / "projects" / "tool", initial_branch="main")
+    with repo.config_writer() as cw:
+        cw.set_value("user", "name", "Source User")
+        cw.set_value("user", "email", "source@example.com")
+    root = Path(str(repo.working_tree_dir))
+    (root / "sub").mkdir()
+    monkeypatch.chdir(root / "sub")
+    return root
 
 
 @pytest.fixture
