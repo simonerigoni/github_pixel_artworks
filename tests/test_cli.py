@@ -113,6 +113,24 @@ class TestArguments:
         assert exit_code_of(run_cli, "-i", SIMPLE, "--year", "2026", "-y") == EXIT_BAD_ARGUMENT
         assert "--target-repo" in capsys.readouterr().err
 
+    def test_the_target_defaults_to_the_detected_profile_repository(
+        self, run_cli, set_global_git_config, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        set_global_git_config("github.user", "octocat")
+
+        received = run_cli("-i", SIMPLE, "--year", "2026", "-y")
+
+        assert received["target_repo"] == "https://github.com/octocat/octocat"
+        assert received["username"] == "octocat"
+        captured = capsys.readouterr()
+        assert "git config github.user" in captured.out
+        assert "could not fetch" not in captured.err  # no auto-scaling network call
+
+    def test_an_explicit_username_picks_the_profile_repository(self, run_cli) -> None:
+        received = run_cli("-i", SIMPLE, "--year", "2026", "--username", "someone", "-y")
+
+        assert received["target_repo"] == "https://github.com/someone/someone"
+
     def test_dry_run_with_an_art_repository_checks_it_without_committing(self, run_cli) -> None:
         received = run_cli("-i", SIMPLE, "--year", "2026", "-t", ART_REPO, "--dry-run")
 

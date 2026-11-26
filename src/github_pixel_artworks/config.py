@@ -64,6 +64,16 @@ CONTRIBUTIONS_URL = GITHUB_URL + "users/{username}/contributions"
 REPO_API_URL = "https://api.github.com/repos/{owner}/{repo}"
 FETCH_TIMEOUT_SECONDS = 15
 
+PROFILE_REPO_URL = GITHUB_URL + "{username}/{username}"
+"""The profile README repository of ``username``, the recommended target."""
+
+GITHUB_USER_CONFIG_KEY = "github.user"
+"""Git setting checked first when detecting the user's GitHub username."""
+GH_COMMAND = "gh"
+"""GitHub CLI, asked for the signed-in login when installed (``gh api user``)."""
+GH_TIMEOUT_SECONDS = 5
+GIT_CONFIG_TIMEOUT_SECONDS = 5
+
 GITHUB_REMOTE_PREFIXES = (
     "git@github.com:",
     "ssh://git@github.com/",
@@ -121,14 +131,24 @@ DARK_LEVEL_TEXT_FROM = 3
 DEFAULT_COLUMNS = 10
 MIN_COLUMNS = 3
 
-WINDOW_GEOMETRY = "1540x600"
-WINDOW_MIN_SIZE = (700, 500)
+WINDOW_SIZE = (1540, 600)
+"""Preferred first size: wide enough for a full year of weeks next to both side panes."""
+WINDOW_SCREEN_MARGIN = 80
+"""Pixels left free on each axis when the screen is smaller than WINDOW_SIZE."""
+WINDOW_MIN_SIZE = (720, 400)
+
 DRAWINGS_PANE_WIDTH = 210
+DRAWINGS_PANE_MIN_WIDTH = 150
+EDITOR_PANE_MIN_WIDTH = 200
+"""The grid scrolls horizontally when it is wider than its pane."""
+ACTIONS_PANE_WIDTH = 280
+ACTIONS_PANE_MIN_WIDTH = 240
+"""Side panes keep their width when the window is resized; the grid pane absorbs the change."""
 DRAWING_BUTTON_WIDTH = 7
 """Characters; keeps Load, Delete and Refresh on one row of the drawings pane."""
-EDITOR_PANE_PADDING = 24
-HINT_WIDTH = 300
-"""Pixels; wrap width of the hints under the inputs."""
+HINT_PADDING = 24
+LOG_LINES = 4  # requested Log height; it grows with the window
+"""Pixels; hints wrap at the actions pane width minus this."""
 HINT_COLOR = "#555"
 QUEUE_POLL_MS = 80
 STATUS_READY = "Ready"

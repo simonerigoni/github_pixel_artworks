@@ -14,12 +14,12 @@ A Python tool that draws pixel art on a GitHub contribution graph by creating em
   - `artwork.py`: the 7-row file format, intensity levels, colours, drawing paths
   - `dates.py`: Sunday alignment, the auto-align window, pixel timestamps
   - `art_repo.py`: opening or cloning the target repository, its default branch, pushing
-  - `github.py`: username validation, the contribution calendar, remote URLs, email and fork checks
+  - `github.py`: username validation and detection (git config, no-reply email, optional gh), the contribution calendar, remote URLs, email and fork checks
   - `painter.py`: `preview` and `apply_drawing`, which both front ends call
   - `cli.py`, `gui.py`: the front ends
 - `data/`: example artworks (see `data/DATA.md`), also where the GUI saves
 - `images/`: README figures; regenerate `grid_diagram.svg` with `uv run python scripts/render_grid_diagram.py`
-- `tests/`: one test module per source module; `conftest.py` provides a throwaway `git_repo`, bare `file://` remotes, and blocks the network
+- `tests/`: one test module per source module; `conftest.py` provides a throwaway `git_repo`, bare `file://` remotes, an empty global git config, no `gh`, and blocks the network
 
 ## Workflow
 

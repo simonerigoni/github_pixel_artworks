@@ -20,6 +20,8 @@ import git
 from .art_repo import local_checkout_path, push_branch
 from .artwork import Grid, count_commits, drawing_path, level_color, load_grid, save_grid
 from .config import (
+    ACTIONS_PANE_MIN_WIDTH,
+    ACTIONS_PANE_WIDTH,
     ART_BRANCH_PREFIX,
     CANVAS_BORDER,
     CELL_OUTLINE,
@@ -29,12 +31,14 @@ from .config import (
     DAYS_PER_WEEK,
     DEFAULT_COLUMNS,
     DRAWING_BUTTON_WIDTH,
+    DRAWINGS_PANE_MIN_WIDTH,
     DRAWINGS_PANE_WIDTH,
-    EDITOR_PANE_PADDING,
+    EDITOR_PANE_MIN_WIDTH,
     GRID_BACKGROUND,
     HINT_COLOR,
-    HINT_WIDTH,
+    HINT_PADDING,
     LEVEL_COLORS,
+    LOG_LINES,
     MAX_WEEKS,
     MAX_YEAR,
     MIN_COLUMNS,
@@ -42,10 +46,12 @@ from .config import (
     QUEUE_POLL_MS,
     STATUS_HINT,
     STATUS_READY,
-    WINDOW_GEOMETRY,
     WINDOW_MIN_SIZE,
+    WINDOW_SCREEN_MARGIN,
+    WINDOW_SIZE,
 )
 from .dates import get_first_sunday_of_year
+from .github import detect_github_username, profile_repo_url
 from .painter import apply_drawing
 
 
@@ -55,25 +61,28 @@ class PixelArtGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         root.title("GitHub Pixel Artworks")
-        root.geometry(WINDOW_GEOMETRY)
+        root.geometry(_first_geometry(root))
         root.minsize(*WINDOW_MIN_SIZE)
 
         self.grid: Grid = _empty_grid(DEFAULT_COLUMNS)
         self.level_var = tk.IntVar(value=1)
         self._stroke_value = 1
         self._push_target: tuple[Path, str] | None = None
+        self._hints: list[ttk.Label] = []
+        self._panes_placed = False
         self._log_queue: queue.Queue[str] = queue.Queue()
         self._ui_queue: queue.Queue[Callable[[], object]] = queue.Queue()
+        self._detected_users: queue.Queue[tuple[str, str]] = queue.Queue()
 
         DATA_DIR.mkdir(exist_ok=True)
         self._build_toolbar()
         self._build_panes()
         self._build_status_bar()
-        self._size_panes()
 
         self._redraw()
         self._populate_drawings_list()
         self._suggest_art_branch()
+        self._prefill_target_repo()
         self.root.after(QUEUE_POLL_MS, self._drain_queues)
 
     @property
@@ -133,9 +142,12 @@ class PixelArtGUI:
     def _build_panes(self) -> None:
         self._panes = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         self._panes.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
-        self._panes.add(self._build_drawings_pane(self._panes), weight=1)
-        self._panes.add(self._build_editor_pane(self._panes), weight=3)
-        self._panes.add(self._build_actions_pane(self._panes), weight=2)
+        # Only the grid pane has weight, so it alone absorbs window resizes.
+        self._panes.add(self._build_drawings_pane(self._panes), weight=0)
+        self._panes.add(self._build_editor_pane(self._panes), weight=1)
+        self._panes.add(self._build_actions_pane(self._panes), weight=0)
+        self._panes.bind("<Configure>", lambda _event: self._fit_panes())
+        self._panes.bind("<ButtonRelease-1>", lambda _event: self._fit_panes(), add="+")
 
     def _build_drawings_pane(self, parent: ttk.PanedWindow) -> ttk.LabelFrame:
         pane = ttk.LabelFrame(parent, text=f"Saved in {DATA_DIR}/", padding=6)
@@ -158,7 +170,11 @@ class PixelArtGUI:
     def _build_editor_pane(self, parent: ttk.PanedWindow) -> ttk.Frame:
         pane = ttk.Frame(parent)
         self.canvas = tk.Canvas(
-            pane, bg=GRID_BACKGROUND, highlightthickness=1, highlightbackground=CANVAS_BORDER
+            pane,
+            width=EDITOR_PANE_MIN_WIDTH,
+            bg=GRID_BACKGROUND,
+            highlightthickness=1,
+            highlightbackground=CANVAS_BORDER,
         )
         scrollbar = ttk.Scrollbar(pane, orient=tk.HORIZONTAL, command=self.canvas.xview)
         self.canvas.configure(xscrollcommand=scrollbar.set)
@@ -175,34 +191,45 @@ class PixelArtGUI:
         pane = ttk.Frame(parent)
         actions = ttk.LabelFrame(pane, text="Actions", padding=6)
         actions.pack(fill=tk.X, pady=(0, 6))
+        actions.bind("<Configure>", self._wrap_hints)
 
         self.filename_var = tk.StringVar(value="my_art")
-        ttk.Label(actions, text="Filename (no .txt):").pack(anchor=tk.W)
-        ttk.Entry(actions, textvariable=self.filename_var).pack(fill=tk.X, pady=2)
-        ttk.Button(actions, text=f"Save to {DATA_DIR}/", command=self._save_drawing).pack(
-            fill=tk.X, pady=2
+        ttk.Label(actions, text=f"Filename in {DATA_DIR}/ (no .txt):").pack(anchor=tk.W)
+        filename_row = ttk.Frame(actions)
+        filename_row.pack(fill=tk.X, pady=2)
+        ttk.Entry(filename_row, textvariable=self.filename_var).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
         )
-        ttk.Separator(actions, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
+        ttk.Button(filename_row, text="Save", command=self._save_drawing).pack(
+            side=tk.LEFT, padx=(4, 0)
+        )
+        ttk.Separator(actions, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=4)
 
         self.target_repo_var = tk.StringVar()
         ttk.Label(actions, text="Target repository (GitHub URL or folder):").pack(anchor=tk.W)
         ttk.Entry(actions, textvariable=self.target_repo_var).pack(fill=tk.X, pady=2)
         self._add_hint(
             actions,
-            "Any repo you own, e.g. your profile README repo <username>/<username>. "
-            "Adds empty commits to its log; deleting the repo removes the art.",
+            "Any repo you own, e.g. your profile README repo. Deleting the repo removes the art.",
         )
 
         self.use_art_branch_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            actions, text="Advanced: use an art branch", variable=self.use_art_branch_var
-        ).pack(anchor=tk.W, pady=(4, 0))
-        branch_row = ttk.Frame(actions)
+        self._art_branch_check = ttk.Checkbutton(
+            actions,
+            text="Advanced: use an art branch",
+            variable=self.use_art_branch_var,
+            command=self._toggle_art_branch,
+        )
+        self._art_branch_check.pack(anchor=tk.W, pady=(4, 0))
+        self.art_branch_details = ttk.Frame(actions)
+        branch_row = ttk.Frame(self.art_branch_details)
         branch_row.pack(fill=tk.X, pady=2)
         self.art_branch_var = tk.StringVar()
         ttk.Label(branch_row, text="Branch:").pack(side=tk.LEFT)
         ttk.Entry(branch_row, textvariable=self.art_branch_var, width=18).pack(side=tk.LEFT, padx=4)
-        self._add_hint(actions, "Shows on your profile only once it is the default branch.")
+        self._add_hint(
+            self.art_branch_details, "Shows on your profile only once it is the default branch."
+        )
 
         generate_row = ttk.Frame(actions)
         generate_row.pack(fill=tk.X, pady=2)
@@ -214,25 +241,45 @@ class PixelArtGUI:
             generate_row, text="Dry run", command=lambda: self._on_generate_clicked(dry_run=True)
         )
         self.dry_run_button.pack(side=tk.LEFT, padx=(4, 0))
+        push_row = ttk.Frame(actions)
+        push_row.pack(fill=tk.X, pady=2)
         self.push_button = ttk.Button(
-            actions, text="Push to GitHub", command=self._on_push_clicked, state=tk.DISABLED
+            push_row, text="Push to GitHub", command=self._on_push_clicked, state=tk.DISABLED
         )
-        self.push_button.pack(fill=tk.X, pady=2)
+        self.push_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.force_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            actions, text="Force (allow a dirty working tree)", variable=self.force_var
-        ).pack(anchor=tk.W, pady=(4, 0))
+        self.force_button = ttk.Checkbutton(
+            push_row, text="Force (dirty tree)", variable=self.force_var
+        )
+        self.force_button.pack(side=tk.LEFT, padx=(4, 0))
 
         log_frame = ttk.LabelFrame(pane, text="Log", padding=4)
         log_frame.pack(fill=tk.BOTH, expand=True)
-        self.log_text = ScrolledText(log_frame, height=12, state=tk.DISABLED, wrap=tk.WORD)
+        self.log_text = ScrolledText(log_frame, height=LOG_LINES, state=tk.DISABLED, wrap=tk.WORD)
         self.log_text.pack(fill=tk.BOTH, expand=True)
         return pane
 
     def _add_hint(self, parent: ttk.Frame | ttk.LabelFrame, text: str) -> None:
-        ttk.Label(parent, text=text, wraplength=HINT_WIDTH, foreground=HINT_COLOR).pack(
-            anchor=tk.W, pady=(0, 4)
+        hint = ttk.Label(
+            parent,
+            text=text,
+            wraplength=ACTIONS_PANE_WIDTH - HINT_PADDING,
+            foreground=HINT_COLOR,
         )
+        hint.pack(anchor=tk.W, pady=(0, 4))
+        self._hints.append(hint)
+
+    def _toggle_art_branch(self) -> None:
+        """Show the art branch field only while the advanced option is on."""
+        if self.use_art_branch_var.get():
+            self.art_branch_details.pack(fill=tk.X, after=self._art_branch_check)
+        else:
+            self.art_branch_details.pack_forget()
+
+    def _wrap_hints(self, event: tk.Event) -> None:
+        """Wrap the hints at the actions pane's current width."""
+        for hint in self._hints:
+            hint.configure(wraplength=max(1, event.width - HINT_PADDING))
 
     def _build_status_bar(self) -> None:
         self.status_var = tk.StringVar(value=STATUS_HINT)
@@ -240,11 +287,28 @@ class PixelArtGUI:
             fill=tk.X, side=tk.BOTTOM
         )
 
-    def _size_panes(self) -> None:
-        """Open with the editor pane wide enough for a full year of columns."""
-        self.root.update_idletasks()
-        self._panes.sashpos(0, DRAWINGS_PANE_WIDTH)
-        self._panes.sashpos(1, DRAWINGS_PANE_WIDTH + MAX_WEEKS * CELL_SIZE + EDITOR_PANE_PADDING)
+    def _fit_panes(self) -> None:
+        """Keep every pane at least its minimum width; the grid pane scrolls instead.
+
+        Runs whenever the paned window is resized or a sash is released. The first
+        call with a real width places the sashes at the preferred pane widths;
+        later calls keep the user's positions and only fix panes that became too
+        narrow.
+        """
+        total = self._panes.winfo_width()
+        if total <= 1:  # not mapped yet
+            return
+        if not self._panes_placed:
+            self._panes_placed = True
+            self._panes.sashpos(0, DRAWINGS_PANE_WIDTH)
+            self._panes.sashpos(1, total - ACTIONS_PANE_WIDTH)
+        actions_start = min(self._panes.sashpos(1), total - ACTIONS_PANE_MIN_WIDTH)
+        drawings = min(self._panes.sashpos(0), actions_start - EDITOR_PANE_MIN_WIDTH)
+        drawings = max(drawings, DRAWINGS_PANE_MIN_WIDTH)
+        actions_start = max(actions_start, drawings + EDITOR_PANE_MIN_WIDTH)
+        self._panes.sashpos(0, drawings)
+        self._panes.sashpos(1, actions_start)
+        self._panes.sashpos(0, drawings)
 
     # Grid editing ----------------------------------------------------------
 
@@ -264,7 +328,7 @@ class PixelArtGUI:
                     tags=(f"cell_{row}_{column}",),
                 )
         width, height = self.columns * CELL_SIZE, DAYS_PER_WEEK * CELL_SIZE
-        self.canvas.config(width=width + 2, height=height + 2, scrollregion=(0, 0, width, height))
+        self.canvas.config(height=height + 2, scrollregion=(0, 0, width, height))
         self._update_schedule_label()
 
     def _cell_at(self, event: tk.Event) -> tuple[int, int] | None:
@@ -394,6 +458,27 @@ class PixelArtGUI:
 
     # Generate and push -----------------------------------------------------
 
+    def _prefill_target_repo(self) -> None:
+        """Fill the target with the user's profile README repository, if detectable.
+
+        Detection may run ``gh``, so it happens on a worker thread; a value the
+        user typed in the meantime is kept. The worker only sees the result
+        queue, so it never holds on to Tk objects.
+        """
+        results = self._detected_users
+
+        def detect() -> None:
+            if detected := detect_github_username():
+                results.put(detected)
+
+        threading.Thread(target=detect, daemon=True).start()
+
+    def _set_default_target(self, username: str, source: str) -> None:
+        if self.target_repo_var.get().strip():
+            return
+        self.target_repo_var.set(profile_repo_url(username))
+        self._log(f"Target repository: your profile README repository (user from {source}).")
+
     def _on_generate_clicked(self, dry_run: bool = False) -> None:
         """Create the commits, or with ``dry_run`` only report how many are new."""
         target = self.target_repo_var.get().strip()
@@ -486,6 +571,8 @@ class PixelArtGUI:
             self._log(message)
         for func in _drain(self._ui_queue):
             func()
+        for username, source in _drain(self._detected_users):
+            self._set_default_target(username, source)
         self.root.after(QUEUE_POLL_MS, self._drain_queues)
 
     def _log(self, message: str) -> None:
@@ -494,6 +581,13 @@ class PixelArtGUI:
         self.log_text.insert(tk.END, message + "\n")
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
+
+
+def _first_geometry(root: tk.Tk) -> str:
+    """Return WINDOW_SIZE, shrunk to fit screens smaller than it."""
+    width = min(WINDOW_SIZE[0], root.winfo_screenwidth() - WINDOW_SCREEN_MARGIN)
+    height = min(WINDOW_SIZE[1], root.winfo_screenheight() - WINDOW_SCREEN_MARGIN)
+    return f"{width}x{height}"
 
 
 def _empty_grid(columns: int) -> Grid:

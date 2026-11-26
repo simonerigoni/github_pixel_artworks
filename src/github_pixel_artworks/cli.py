@@ -20,7 +20,12 @@ from .config import (
     YEAR_BRANCH_PLACEHOLDERS,
 )
 from .dates import get_auto_start_date, get_first_sunday_of_year
-from .github import calculate_multiplier, fetch_max_daily_commits
+from .github import (
+    calculate_multiplier,
+    detect_github_username,
+    fetch_max_daily_commits,
+    profile_repo_url,
+)
 from .painter import apply_drawing, preview
 
 
@@ -55,8 +60,9 @@ def perform_pixel_art(
         return
     if not target_repo:
         _fail(
-            "--target-repo is required: the URL or path of a repository you own, e.g. your "
-            "profile README repository https://github.com/<username>/<username>",
+            "--target-repo is required, because no GitHub user was detected: pass the URL "
+            "or path of a repository you own, e.g. https://github.com/<username>/<username>, "
+            "or set your user once with: git config --global github.user <username>",
             EXIT_BAD_ARGUMENT,
         )
 
@@ -162,7 +168,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--target-repo",
         help="A repository you own, e.g. your profile README repository "
         "https://github.com/<username>/<username>: a GitHub URL (cloned into ./<repo>) or a "
-        "local path. Empty commits go on its default branch. Required unless --dry-run.",
+        "local path. Empty commits go on its default branch. Default: the profile README "
+        "repository of your GitHub user, from git config github.user, a no-reply "
+        "user.email or gh.",
     )
     target.add_argument("--push", action="store_true", help="Push to origin after drawing.")
     target.add_argument(
@@ -224,6 +232,23 @@ def _resolve_multiplier(args: argparse.Namespace) -> int:
     return args.multiplier * auto_multiplier
 
 
+def _resolve_profile(args: argparse.Namespace) -> tuple[str | None, str | None]:
+    """Return the GitHub username and target repository, filling gaps from local settings.
+
+    ``--username`` and ``--target-repo`` win; a missing target becomes the
+    profile README repository. The detected username is only used for the
+    target and the email check, never for --username's auto-scaling.
+    """
+    username, target_repo = args.username, args.target_repo
+    if not username and (detected := detect_github_username()):
+        username, source = detected
+        print(f"GitHub user '{username}' (from {source}).")
+    if not target_repo and username:
+        target_repo = profile_repo_url(username)
+        print(f"Target repository: {target_repo} (your profile README repository).")
+    return username, target_repo
+
+
 def cli() -> None:
     """Entry point of the ``github-pixel-artworks`` command."""
     parser = build_parser()
@@ -243,9 +268,10 @@ def cli() -> None:
     if start.weekday() != SUNDAY:
         _warn(f"{start.date()} is not a Sunday, so columns won't line up with GitHub's weeks.")
     multiplier = _resolve_multiplier(args)
+    username, target_repo = _resolve_profile(args)
 
     perform_pixel_art(
-        target_repo=args.target_repo,
+        target_repo=target_repo,
         grid=grid,
         start_date=start,
         multiplier=multiplier,
@@ -253,7 +279,7 @@ def cli() -> None:
         yes=args.yes,
         force=args.force,
         art_branch=art_branch,
-        username=args.username,
+        username=username,
         push=args.push,
     )
 
