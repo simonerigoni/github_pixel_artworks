@@ -6,17 +6,14 @@ from pathlib import Path
 import git
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
+from .config import TOOL_MARKER, URL_SCHEMES
+
 type Log = Callable[[str], None]
-
-_URL_SCHEMES = ("https://", "http://", "ssh://", "git://", "file://")
-
-_TOOL_MARKER = Path("src") / "github_pixel_artworks" / "__init__.py"
-"""A file only a checkout of this project has."""
 
 
 def is_remote_url(target: str) -> bool:
     """Return True for a clone URL (``https://``, ``ssh://``, ``git@host:path``, ...)."""
-    if target.startswith(_URL_SCHEMES):
+    if target.startswith(URL_SCHEMES):
         return True
     user_host, colon, _path = target.partition(":")
     return bool(colon) and "@" in user_host and "/" not in user_host and "\\" not in user_host
@@ -80,7 +77,7 @@ def default_branch(repo: git.Repo) -> str | None:
 
 def is_tool_checkout(root: Path) -> bool:
     """Return True if ``root`` is a checkout of github-pixel-artworks itself."""
-    return (root / _TOOL_MARKER).is_file()
+    return (root / TOOL_MARKER).is_file()
 
 
 def push_branch(repo: git.Repo, branch: str, log: Log) -> None:

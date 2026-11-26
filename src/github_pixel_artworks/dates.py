@@ -2,21 +2,11 @@
 
 from datetime import UTC, date, datetime, timedelta
 
-SUNDAY = 6
-"""``date.weekday()`` value for Sunday; GitHub's weeks start on Sunday."""
+from .config import COMMIT_HOUR_UTC, DAYS_PER_YEAR, SUNDAY
 
-DAYS_PER_YEAR = 365
-
-MIN_YEAR = 2000
-MAX_YEAR = 2100
-"""Range of target years accepted by the CLI and the GUI."""
-
-COMMIT_HOUR_UTC = 12
-"""Hour of day (UTC) every pixel commit is dated at.
-
-GitHub groups contributions by UTC day, so noon keeps each pixel on its
-intended square whatever the committer's local timezone.
-"""
+# Re-exported: these were defined here before config.py.
+from .config import MAX_YEAR as MAX_YEAR
+from .config import MIN_YEAR as MIN_YEAR
 
 
 def next_sunday(day: date) -> date:

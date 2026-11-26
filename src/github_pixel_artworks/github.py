@@ -2,36 +2,27 @@
 
 import json
 import math
-import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
 
-from .artwork import TOP_LEVEL
-
-FETCH_TIMEOUT_SECONDS = 15
-
-_USERNAME_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}")
-"""1 to 39 letters, digits or single inner hyphens."""
-
-_DAY_COUNT_RE = re.compile(r">\s*([\d,]+) contributions? on ")
-"""Day tooltip text, e.g. ``12 contributions on May 2nd.`` (``No contributions`` is skipped)."""
-
-_NOREPLY_RE = re.compile(r"(?:\d+\+)?(?P<login>[^@+]+)@users\.noreply\.github\.com", re.IGNORECASE)
-"""GitHub's no-reply commit address, ``ID+login@users.noreply.github.com`` or ``login@...``."""
-
-_GITHUB_REMOTE_PREFIXES = (
-    "git@github.com:",
-    "ssh://git@github.com/",
-    "https://github.com/",
-    "http://github.com/",
+from .config import (
+    CONTRIBUTIONS_URL,
+    DAY_COUNT_RE,
+    FETCH_TIMEOUT_SECONDS,
+    GITHUB_REMOTE_PREFIXES,
+    GITHUB_URL,
+    NOREPLY_RE,
+    REPO_API_URL,
+    TOP_LEVEL,
+    USERNAME_RE,
 )
 
 
 def is_valid_github_username(username: str) -> bool:
     """Return True if ``username`` is a syntactically valid GitHub login."""
-    return _USERNAME_RE.fullmatch(username) is not None
+    return USERNAME_RE.fullmatch(username) is not None
 
 
 def fetch_max_daily_commits(username: str, log: Callable[[str], None] = print) -> int | None:
@@ -46,7 +37,7 @@ def fetch_max_daily_commits(username: str, log: Callable[[str], None] = print) -
         log(f"Warning: '{username}' is not a valid GitHub username; skipping auto-scaling.")
         return None
 
-    url = f"https://github.com/users/{urllib.parse.quote(username)}/contributions"
+    url = CONTRIBUTIONS_URL.format(username=urllib.parse.quote(username))
     try:
         with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_SECONDS) as response:
             html = response.read().decode("utf-8", errors="replace")
@@ -54,7 +45,7 @@ def fetch_max_daily_commits(username: str, log: Callable[[str], None] = print) -
         log(f"Warning: could not fetch GitHub contributions for '{username}': {error}")
         return None
 
-    counts = [int(count.replace(",", "")) for count in _DAY_COUNT_RE.findall(html)]
+    counts = [int(count.replace(",", "")) for count in DAY_COUNT_RE.findall(html)]
     return max(counts, default=0) or None
 
 
@@ -73,9 +64,9 @@ def normalize_github_https_url(remote_url: str) -> str | None:
     in generated text.
     """
     url = remote_url.strip().removesuffix("/").removesuffix(".git")
-    for prefix in _GITHUB_REMOTE_PREFIXES:
+    for prefix in GITHUB_REMOTE_PREFIXES:
         if url.startswith(prefix):
-            return f"https://github.com/{url.removeprefix(prefix).strip('/')}"
+            return GITHUB_URL + url.removeprefix(prefix).strip("/")
     return None
 
 
@@ -84,7 +75,7 @@ def github_slug(remote_url: str) -> tuple[str, str] | None:
     url = normalize_github_https_url(remote_url)
     if url is None:
         return None
-    parts = url.removeprefix("https://github.com/").split("/")
+    parts = url.removeprefix(GITHUB_URL).split("/")
     return (parts[0], parts[1]) if len(parts) == 2 and all(parts) else None
 
 
@@ -100,7 +91,7 @@ def commit_email_warning(email: str | None, login: str | None) -> str | None:
             "git user.email is not set, so GitHub cannot link the commits to you. "
             "Set it with: git config user.email <an email on your GitHub account>"
         )
-    match = _NOREPLY_RE.fullmatch(email.strip())
+    match = NOREPLY_RE.fullmatch(email.strip())
     if match and login and match["login"].lower() != login.lower():
         return (
             f"git user.email {email} is the no-reply address of '{match['login']}', "
@@ -114,7 +105,7 @@ def fetch_is_fork(owner: str, repo: str) -> bool | None:
 
     Returns None when that is unknown: offline, rate limited, or a private repo.
     """
-    url = f"https://api.github.com/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}"
+    url = REPO_API_URL.format(owner=urllib.parse.quote(owner), repo=urllib.parse.quote(repo))
     try:
         with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_SECONDS) as response:
             data = json.loads(response.read().decode("utf-8", errors="replace"))

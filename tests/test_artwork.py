@@ -5,9 +5,6 @@ from pathlib import Path
 import pytest
 
 from github_pixel_artworks.artwork import (
-    EMPTY_COLOR,
-    LEVEL_COLORS,
-    MAX_WEEKS,
     count_commits,
     drawing_path,
     grid_to_text,
@@ -16,6 +13,7 @@ from github_pixel_artworks.artwork import (
     save_grid,
     validate_grid,
 )
+from github_pixel_artworks.config import EMPTY_COLOR, LEVEL_COLORS, MAX_WEEKS
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
