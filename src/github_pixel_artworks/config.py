@@ -328,32 +328,14 @@ PATTERN_ICON_DUNGEON_SPRITES: tuple[_Sprite, ...] = (
         "...#...",
         "..###..",
     ),
-    (  # shield
+    (  # heart
+        ".##.##.",
+        "#######",
+        "#######",
         ".#####.",
-        "#.....#",
-        "#.#.#.#",
-        "#.....#",
-        "#.....#",
-        ".#...#.",
-        "..###..",
-    ),
-    (  # skull
-        ".#####.",
-        "#.....#",
-        "#.#.#.#",
-        "##...##",
-        ".#####.",
-        ".#.#.#.",
-        "#.#.#.#",
-    ),
-    (  # potion
         "..###..",
         "...#...",
-        ".#####.",
-        "#.....#",
-        "#..#..#",
-        "#.....#",
-        ".#####.",
+        ".......",
     ),
     (  # key
         ".###...",
@@ -364,17 +346,8 @@ PATTERN_ICON_DUNGEON_SPRITES: tuple[_Sprite, ...] = (
         "..###..",
         "....#..",
     ),
-    (  # heart
-        ".##.##.",
-        "#######",
-        "#######",
-        ".#####.",
-        "..###..",
-        "...#...",
-        ".......",
-    ),
 )
-"""Hand-drawn dungeon icons: sword, shield, skull, potion, key, heart."""
+"""Hand-drawn dungeon icons: sword, heart, key."""
 
 PATTERN_ICON_NATURE_SPRITES: tuple[_Sprite, ...] = (
     (  # tree
@@ -385,15 +358,6 @@ PATTERN_ICON_NATURE_SPRITES: tuple[_Sprite, ...] = (
         "..#.#..",
         "...#...",
         "...#...",
-    ),
-    (  # mushroom
-        "..###..",
-        ".#####.",
-        "#######",
-        "#.#.#.#",
-        ".#####.",
-        "...#...",
-        "..###..",
     ),
     (  # flower
         "..#.#..",
@@ -413,17 +377,8 @@ PATTERN_ICON_NATURE_SPRITES: tuple[_Sprite, ...] = (
         ".###...",
         "..#....",
     ),
-    (  # sun
-        "#..#..#",
-        ".#...#.",
-        "#.###.#",
-        "..#.#..",
-        "#.###.#",
-        ".#...#.",
-        "#..#..#",
-    ),
 )
-"""Hand-drawn nature icons: tree, mushroom, flower, leaf, sun."""
+"""Hand-drawn nature icons: tree, flower, leaf."""
 
 # CLI exit codes --------------------------------------------------------------
 

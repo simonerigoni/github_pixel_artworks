@@ -257,20 +257,26 @@ class TestIcons:
         grid = generate(name, width=52, seed=4)
         assert_valid(grid, 52)
         matches = _matching_sprites(grid, sprites)
-        assert len(matches) >= 3
-        origins = [origin for origin, _cells in matches]
         span = len(sprites[0][0])
         assert all(len(sprite[0]) == span for sprite in sprites)
+        # Three 7-wide icons with a 3-column gap should fill a year several times over.
+        assert len(matches) >= 5
+        origins = [origin for origin, _cells in matches]
         assert all(
             right - left == span + PATTERN_ICON_GAP
             for left, right in zip(origins, origins[1:], strict=False)
         )
+        assert origins[0] <= PATTERN_ICON_GAP
+        assert origins[-1] + span - origins[0] == 5 * span + 4 * PATTERN_ICON_GAP
         shades = [{grid[row][column] for row, column in cells} for _origin, cells in matches]
         for icon_shades in shades:
             assert len(icon_shades) == 1
             assert icon_shades <= set(range(1, TOP_LEVEL + 1))
         consecutive = [next(iter(icon_shades)) for icon_shades in shades]
         assert all(left != right for left, right in zip(consecutive, consecutive[1:], strict=False))
+        stamped = [_sprite_at(origin, cells, sprites) for origin, cells in matches]
+        assert set(stamped) == set(sprites)
+        assert all(left != right for left, right in zip(stamped, stamped[1:], strict=False))
 
 
 class TestText:
@@ -408,6 +414,25 @@ def _longest_empty_run(heights: list[int]) -> int:
         else:
             current = 0
     return longest
+
+
+def _sprite_at(
+    origin: int,
+    cells: set[tuple[int, int]],
+    sprites: tuple[tuple[str, ...], ...],
+) -> tuple[str, ...]:
+    """Return the sprite whose filled cells match ``cells`` at ``origin``."""
+    for sprite in sprites:
+        top = max(0, (DAYS_PER_WEEK - len(sprite)) // 2)
+        mask = {
+            (top + drow, origin + dcol)
+            for drow, line in enumerate(sprite)
+            for dcol, char in enumerate(line)
+            if char in "#o"
+        }
+        if mask == cells:
+            return sprite
+    raise AssertionError(f"no sprite matched cells at column {origin}")
 
 
 def _matching_sprites(
