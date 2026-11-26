@@ -2,53 +2,33 @@
 
 ## Data
 
-This folder contains the data used by the project.
+This folder contains the example artworks. The GUI also saves and loads drawings here.
 
 ### Format
 
-Each artwork is a plain text file with **exactly 7 lines** (one for each day of the week).
+An artwork is a plain text file with **exactly 7 lines**, from Sunday (first line) to Saturday (last line). Each character is one week of the contribution graph, and artworks are at most 52 weeks wide.
 
-- Row 0 (first line): Sunday
-- Row 6 (last line): Saturday
+| Characters | Level | Commits that day |
+| --- | --- | --- |
+| space, `.`, `x`, `X`, `0` | 0 | none |
+| `*`, `1` | 1 | 1 x multiplier |
+| `2`, `3` | 2, 3 | 2 or 3 x multiplier |
+| `4`, `#`, `h`, `H` | 4 | 4 x multiplier (darkest green) |
+| `5` to `9` | 5 to 9 | 5 to 9 x multiplier |
 
-Each character in a line represents one week (column) in the contribution graph.
-
-- Empty cells (no commit): ` ` (space), `.`, `x`, `X`, `0`
-- Filled cells (commit that day):
-  - `*` or `1` = level 1 (lightest green)
-  - `2` = level 2
-  - `3` = level 3
-  - `4` / `#` / `H` / higher digits = level 4+ (darkest)
-
-The CLI and GUI treat any value > 0 as "filled" for the purpose of creating commits. Higher numbers increase the number of commits on that day (for darker squares on the graph).
+Any other character is empty. Short lines are padded with empty cells and trailing blank lines are ignored. Saving writes level 1 as `*` and higher levels as digits.
 
 ### Examples
 
-See the files in this folder:
+- `simple.txt`: a small diamond
+- `heart.txt`: a heart
+- `legacy.txt`: the example from [jarreed0/contributionartwork](https://github.com/jarreed0/contributionartwork)
+- `space_invaders.txt`: a row of space invaders, a full 52 weeks wide
 
-- `simple.txt` - a small diamond shape
-- `heart.txt` - heart pattern
-- `legacy.txt` - original example from the inspiration project
-- `space_invaders.txt` - fun space invader pattern
+### Placement
 
-### Usage
+- `--year 2025` starts the first column on the first Sunday of 2025.
+- `--offset-weeks N` (at most 52) shifts the artwork N weeks to the right.
+- `--auto-align` starts on the first Sunday of the year currently visible on your profile.
 
-These files can be passed to the CLI via `-i data/simple.txt --year 2025 ...`
-
-The GUI saves and loads directly to/from this folder.
-
-### How dates are calculated
-
-- `--year 2025` starts the leftmost column on the first Sunday of 2025.
-- `--offset-weeks N` (N = 0..52) shifts the entire pattern N weeks to the right.
-- `--auto-align` uses ~1 year ago (rolling view).
-
-Artworks are limited to at most 52 weeks (columns) wide.
-
-See the code in `src/github_pixel_artworks/core.py` (functions like `get_first_sunday_of_year`, `apply_drawing`).
-
-### Creating your own
-
-Use the GUI (`uv run github-pixel-artworks-gui`) to draw interactively and save new `.txt` files here, or edit them manually in a text editor.
-
-The files should have no trailing empty lines and consistent width across the 7 rows.
+See `src/github_pixel_artworks/dates.py` for the date logic and the README's grid diagram for an example.

@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="606" height="374" viewBox="0 0 606 374" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#24292f">
 <rect width="606" height="374" fill="#ffffff"/>
 <text x="16" y="28" font-weight="bold">data/heart.txt with --year 2026</text>
-<text x="16" y="50" fill="#57606a">Each column is a week (starting on Sunday), each row a weekday.</text>
+<text x="16" y="50" fill="#57606a">Each column is a week starting on Sunday; each row is a weekday.</text>
 <text x="84" y="121.68" text-anchor="end">Sun</text>
 <text x="84" y="151.68" text-anchor="end">Mon</text>
 <text x="84" y="181.68" text-anchor="end">Tue</text>
