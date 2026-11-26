@@ -6,7 +6,7 @@ temp/
 # Python compiled files
 *.pyc
 
-# Virtual enviroment
+# Virtual environment
 .venv/
 
 # Pytest cache
