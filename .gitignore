@@ -20,6 +20,7 @@ target_cloned_repo/
 
 # pytest-cov stuff
 .coverage
+COVERAGE.md
 
 # Local secrets and logs
 .env
